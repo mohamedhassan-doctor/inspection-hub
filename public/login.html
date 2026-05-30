@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>تسجيل الدخول | Inspection Hub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="login-page">
+  <div class="login-box">
+    <div class="login-logo">
+      <i class="fas fa-clipboard-check"></i>
+      <h1>Inspection Hub</h1>
+      <p>نظام الجولات الرقابية الداخلية<br>مستشفى المقطم التخصصي</p>
+    </div>
+    <form id="login-form">
+      <div class="form-group">
+        <label class="form-label"><i class="fas fa-user" style="margin-left:6px;color:#0e7490"></i>اسم المستخدم</label>
+        <input type="text" id="username" class="form-control" placeholder="أدخل اسم المستخدم" required autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label class="form-label"><i class="fas fa-lock" style="margin-left:6px;color:#0e7490"></i>كلمة المرور</label>
+        <div style="position:relative">
+          <input type="password" id="password" class="form-control" placeholder="أدخل كلمة المرور" required autocomplete="current-password" style="padding-left:40px">
+          <button type="button" onclick="togglePass()" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#94a3b8;font-size:15px">
+            <i class="fas fa-eye" id="eye-icon"></i>
+          </button>
+        </div>
+      </div>
+      <div id="error-msg" style="display:none;background:#fee2e2;color:#dc2626;padding:10px 14px;border-radius:8px;margin-bottom:16px;font-size:14px"></div>
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:12px" id="login-btn">
+        <i class="fas fa-sign-in-alt"></i> دخول
+      </button>
+    </form>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="/js/shared.js"></script>
+<script>
+function togglePass() {
+  const inp = document.getElementById('password');
+  const ico = document.getElementById('eye-icon');
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    ico.className = 'fas fa-eye-slash';
+  } else {
+    inp.type = 'password';
+    ico.className = 'fas fa-eye';
+  }
+}
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('login-btn');
+  const errEl = document.getElementById('error-msg');
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الدخول...';
+  try {
+    const res = await fetch('/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: document.getElementById('username').value.trim(),
+        password: document.getElementById('password').value,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error || 'بيانات غير صحيحة';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
+      return;
+    }
+    window.location.href = '/';
+  } catch {
+    errEl.textContent = 'خطأ في الاتصال بالخادم';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> دخول';
+  }
+});
+</script>
+</body>
+</html>

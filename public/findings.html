@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>المخالفات | Inspection Hub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand"><i class="fas fa-clipboard-check"></i><span>Inspection Hub</span></div>
+    <nav class="sidebar-nav">
+      <a href="/" class="nav-link" data-page="dashboard"><i class="fas fa-tachometer-alt"></i> لوحة التحكم</a>
+      <a href="/inspections" class="nav-link" data-page="inspections"><i class="fas fa-search"></i> الجولات</a>
+      <a href="/checklists" class="nav-link" data-page="checklists"><i class="fas fa-list-check"></i> قوائم التدقيق</a>
+      <a href="/findings" class="nav-link" data-page="findings"><i class="fas fa-exclamation-triangle"></i> المخالفات</a>
+      <a href="/capa" class="nav-link" data-page="capa"><i class="fas fa-tasks"></i> CAPA <span id="capa-badge" class="nav-badge" style="display:none">0</span></a>
+      <a href="/reports" class="nav-link" data-page="reports"><i class="fas fa-chart-bar"></i> التقارير</a>
+      <a href="/users" class="nav-link admin-only" data-page="users"><i class="fas fa-users"></i> المستخدمون</a>
+    </nav>
+    <div class="sidebar-footer"><span id="user-name"></span><a href="/logout" class="logout-btn"><i class="fas fa-sign-out-alt"></i></a></div>
+  </aside>
+
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-title">المخالفات <span>رصد وإدارة المخالفات والملاحظات الرقابية</span></div>
+      <button class="btn btn-primary" onclick="openCreateFinding()"><i class="fas fa-plus"></i> مخالفة جديدة</button>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-bar">
+      <input type="text" id="search" class="form-control search" placeholder="🔍 بحث...">
+      <select id="f-severity" class="form-control" onchange="loadFindings()">
+        <option value="">كل مستويات الخطورة</option>
+        <option value="critical">حرجة</option>
+        <option value="major">رئيسية</option>
+        <option value="observation">ملاحظة</option>
+      </select>
+      <select id="f-dept" class="form-control" onchange="loadFindings()"><option value="">كل الأقسام</option></select>
+      <select id="f-status" class="form-control" onchange="loadFindings()">
+        <option value="">كل الحالات</option>
+        <option value="open">مفتوحة (بدون CAPA مغلقة)</option>
+        <option value="closed">مغلقة</option>
+      </select>
+    </div>
+
+    <!-- Table -->
+    <div class="card">
+      <div class="card-body" style="padding:0">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>الوصف</th><th>الخطورة</th><th>القسم</th><th>الجولة</th>
+                <th>التاريخ</th><th>CAPA</th><th>الإجراءات</th>
+              </tr>
+            </thead>
+            <tbody id="findings-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Finding Modal -->
+<div class="modal-overlay" id="finding-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="finding-modal-title">مخالفة جديدة</span>
+      <button class="modal-close" onclick="closeModal('finding-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="f-edit-id">
+      <div class="form-group">
+        <label class="form-label">الوصف *</label>
+        <textarea id="f-desc" class="form-control" rows="3" placeholder="وصف تفصيلي للمخالفة..."></textarea>
+      </div>
+      <div class="form-row cols-2">
+        <div class="form-group">
+          <label class="form-label">مستوى الخطورة *</label>
+          <select id="f-sev" class="form-control">
+            <option value="critical">حرجة 🔴</option>
+            <option value="major" selected>رئيسية 🟡</option>
+            <option value="observation">ملاحظة 🔵</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">القسم *</label>
+          <select id="f-dept-sel" class="form-control"></select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('finding-modal')">إلغاء</button>
+      <button class="btn btn-primary" onclick="saveFinding()"><i class="fas fa-save"></i> حفظ</button>
+    </div>
+  </div>
+</div>
+
+<!-- CAPA Modal -->
+<div class="modal-overlay" id="capa-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">إنشاء CAPA</span>
+      <button class="modal-close" onclick="closeModal('capa-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="capa-finding-id">
+      <div id="capa-finding-info" style="background:#fef9c3;padding:12px;border-radius:8px;margin-bottom:16px;font-size:13px"></div>
+      <div class="form-group">
+        <label class="form-label">الإجراء التصحيحي *</label>
+        <textarea id="capa-action" class="form-control" rows="3" placeholder="صف الإجراء التصحيحي المطلوب..."></textarea>
+      </div>
+      <div class="form-row cols-2">
+        <div class="form-group">
+          <label class="form-label">المسؤول</label>
+          <select id="capa-resp" class="form-control"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">الموعد النهائي *</label>
+          <input type="date" id="capa-due" class="form-control">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">ملاحظات الدليل</label>
+        <textarea id="capa-evidence" class="form-control" rows="2" placeholder="ملاحظات حول الدليل المطلوب..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('capa-modal')">إلغاء</button>
+      <button class="btn btn-primary" onclick="saveCapa()"><i class="fas fa-tasks"></i> إنشاء CAPA</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/js/shared.js"></script>
+<script>
+let depts = [], users = [], allFindings = [];
+
+async function loadInit() {
+  [depts, users] = await Promise.all([
+    api('GET', '/api/departments'),
+    api('GET', '/api/users/dropdown').catch(() => []),
+  ]);
+  const ds = document.getElementById('f-dept');
+  const dsSel = document.getElementById('f-dept-sel');
+  const capaResp = document.getElementById('capa-resp');
+
+  depts.forEach(d => {
+    [ds, dsSel].forEach(sel => {
+      const o = document.createElement('option');
+      o.value = d.id; o.textContent = d.name;
+      sel.appendChild(o);
+    });
+  });
+
+  capaResp.innerHTML = '<option value="">— غير محدد —</option>';
+  users.forEach(u => {
+    const o = document.createElement('option');
+    o.value = u.id; o.textContent = `${u.name} (${roleLabels[u.role]||u.role})`;
+    capaResp.appendChild(o);
+  });
+}
+
+async function loadFindings() {
+  try {
+    const params = new URLSearchParams();
+    const sev = document.getElementById('f-severity').value;
+    const dept = document.getElementById('f-dept').value;
+    const status = document.getElementById('f-status').value;
+    if (sev) params.set('severity', sev);
+    if (dept) params.set('dept', dept);
+    if (status) params.set('status', status);
+    allFindings = await api('GET', `/api/findings?${params}`);
+    renderTable(allFindings);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+document.getElementById('search').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  renderTable(allFindings.filter(r => r.description.toLowerCase().includes(q) || (r.dept_name||'').toLowerCase().includes(q)));
+});
+
+function renderTable(rows) {
+  const tbody = document.getElementById('findings-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><i class="fas fa-check-circle"></i><p>لا توجد مخالفات</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => {
+    const sl = sevLabels[r.severity] || { text: r.severity, cls: 'badge badge-secondary' };
+    let capaBadge;
+    if (!r.capa_id) capaBadge = '<span style="color:#94a3b8;font-size:12px">—</span>';
+    else {
+      const cs = capaStatusLabels[r.capa_status] || { text: r.capa_status, cls: 'badge-secondary' };
+      capaBadge = `<span class="badge ${cs.cls}">${cs.text}</span>`;
+    }
+    let actions = `<button class="btn btn-secondary btn-sm btn-icon" onclick="editFinding(${r.id})" title="تعديل"><i class="fas fa-edit"></i></button> `;
+    if (!r.capa_id) {
+      actions += `<button class="btn btn-warning btn-sm" onclick="openCreateCapa(${r.id},'${r.description.replace(/'/g,'\\\'').slice(0,80)}','${r.severity}')" title="إنشاء CAPA">
+        <i class="fas fa-tasks"></i> CAPA
+      </button> `;
+    }
+    actions += `<button class="btn btn-danger btn-sm btn-icon" onclick="deleteFinding(${r.id})" title="حذف"><i class="fas fa-trash"></i></button>`;
+    return `<tr>
+      <td style="max-width:220px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.description}">${r.description}</div></td>
+      <td><span class="${sl.cls}">${sl.text}</span></td>
+      <td>${r.dept_name||'—'}</td>
+      <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.inspection_title||'—'}</td>
+      <td>${fmtDate(r.created_at)}</td>
+      <td>${capaBadge}</td>
+      <td style="white-space:nowrap">${actions}</td>
+    </tr>`;
+  }).join('');
+}
+
+function openCreateFinding() {
+  document.getElementById('f-edit-id').value = '';
+  document.getElementById('finding-modal-title').textContent = 'مخالفة جديدة';
+  document.getElementById('f-desc').value = '';
+  document.getElementById('f-sev').value = 'major';
+  document.getElementById('f-dept-sel').value = '';
+  openModal('finding-modal');
+}
+
+async function editFinding(id) {
+  const f = allFindings.find(x => x.id === id);
+  if (!f) return;
+  document.getElementById('f-edit-id').value = id;
+  document.getElementById('finding-modal-title').textContent = 'تعديل المخالفة';
+  document.getElementById('f-desc').value = f.description;
+  document.getElementById('f-sev').value = f.severity;
+  document.getElementById('f-dept-sel').value = f.dept_id || '';
+  openModal('finding-modal');
+}
+
+async function saveFinding() {
+  const id = document.getElementById('f-edit-id').value;
+  const body = {
+    description: document.getElementById('f-desc').value.trim(),
+    severity: document.getElementById('f-sev').value,
+    dept_id: document.getElementById('f-dept-sel').value || null,
+  };
+  if (!body.description) return showToast('يرجى إدخال الوصف', 'warning');
+  try {
+    if (id) { await api('PUT', `/api/findings/${id}`, body); showToast('تم التحديث', 'success'); }
+    else { await api('POST', '/api/findings', body); showToast('تم الإنشاء', 'success'); }
+    closeModal('finding-modal');
+    loadFindings();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function deleteFinding(id) {
+  if (!confirmAction('هل تريد حذف هذه المخالفة؟')) return;
+  try {
+    await api('DELETE', `/api/findings/${id}`);
+    showToast('تم الحذف', 'success');
+    loadFindings();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function openCreateCapa(findingId, description, severity) {
+  document.getElementById('capa-finding-id').value = findingId;
+  document.getElementById('capa-finding-info').innerHTML =
+    `<strong>المخالفة:</strong> ${description} | <strong>الخطورة:</strong> ${sevLabels[severity]?.text || severity}`;
+  document.getElementById('capa-action').value = '';
+  document.getElementById('capa-resp').value = '';
+  const due = new Date();
+  due.setDate(due.getDate() + 30);
+  document.getElementById('capa-due').value = due.toISOString().split('T')[0];
+  document.getElementById('capa-evidence').value = '';
+  openModal('capa-modal');
+}
+
+async function saveCapa() {
+  const body = {
+    finding_id: document.getElementById('capa-finding-id').value,
+    action: document.getElementById('capa-action').value.trim(),
+    responsible_id: document.getElementById('capa-resp').value || null,
+    due_date: document.getElementById('capa-due').value,
+    evidence_notes: document.getElementById('capa-evidence').value.trim() || null,
+  };
+  if (!body.action || !body.due_date) return showToast('يرجى ملء الحقول المطلوبة', 'warning');
+  try {
+    await api('POST', '/api/capa', body);
+    showToast('تم إنشاء CAPA بنجاح', 'success');
+    closeModal('capa-modal');
+    loadFindings();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+initPage('findings');
+loadInit().then(loadFindings);
+</script>
+</body>
+</html>

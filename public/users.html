@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>المستخدمون | Inspection Hub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand"><i class="fas fa-clipboard-check"></i><span>Inspection Hub</span></div>
+    <nav class="sidebar-nav">
+      <a href="/" class="nav-link" data-page="dashboard"><i class="fas fa-tachometer-alt"></i> لوحة التحكم</a>
+      <a href="/inspections" class="nav-link" data-page="inspections"><i class="fas fa-search"></i> الجولات</a>
+      <a href="/checklists" class="nav-link" data-page="checklists"><i class="fas fa-list-check"></i> قوائم التدقيق</a>
+      <a href="/findings" class="nav-link" data-page="findings"><i class="fas fa-exclamation-triangle"></i> المخالفات</a>
+      <a href="/capa" class="nav-link" data-page="capa"><i class="fas fa-tasks"></i> CAPA <span id="capa-badge" class="nav-badge" style="display:none">0</span></a>
+      <a href="/reports" class="nav-link" data-page="reports"><i class="fas fa-chart-bar"></i> التقارير</a>
+      <a href="/users" class="nav-link admin-only" data-page="users"><i class="fas fa-users"></i> المستخدمون</a>
+    </nav>
+    <div class="sidebar-footer"><span id="user-name"></span><a href="/logout" class="logout-btn"><i class="fas fa-sign-out-alt"></i></a></div>
+  </aside>
+
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-title">إدارة المستخدمين <span>للمدير العام فقط — إنشاء وتعديل الحسابات</span></div>
+      <button class="btn btn-primary" onclick="openCreate()"><i class="fas fa-user-plus"></i> مستخدم جديد</button>
+    </div>
+
+    <!-- Role cards -->
+    <div class="cards-row cols-5" style="--cols:5;grid-template-columns:repeat(5,1fr);margin-bottom:20px" id="role-cards"></div>
+
+    <div class="card">
+      <div class="card-body" style="padding:0">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th><th>الاسم الكامل</th><th>اسم المستخدم</th><th>الدور</th><th>الإجراءات</th>
+              </tr>
+            </thead>
+            <tbody id="users-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- User Modal -->
+<div class="modal-overlay" id="user-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="user-modal-title">مستخدم جديد</span>
+      <button class="modal-close" onclick="closeModal('user-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="u-edit-id">
+      <div class="form-row cols-2">
+        <div class="form-group">
+          <label class="form-label">الاسم الكامل *</label>
+          <input type="text" id="u-name" class="form-control" placeholder="الاسم الكامل">
+        </div>
+        <div class="form-group">
+          <label class="form-label">اسم المستخدم *</label>
+          <input type="text" id="u-username" class="form-control" placeholder="بالإنجليزية فقط" dir="ltr">
+        </div>
+        <div class="form-group" id="pass-group">
+          <label class="form-label">كلمة المرور *</label>
+          <input type="password" id="u-password" class="form-control" placeholder="8 أحرف على الأقل" dir="ltr">
+        </div>
+        <div class="form-group">
+          <label class="form-label">الدور *</label>
+          <select id="u-role" class="form-control">
+            <option value="inspector">مفتش</option>
+            <option value="quality_staff">موظف الجودة</option>
+            <option value="dept_head">رئيس قسم</option>
+            <option value="quality_manager">مدير الجودة</option>
+            <option value="superadmin">مدير النظام</option>
+          </select>
+        </div>
+      </div>
+      <div id="pass-hint" style="display:none;font-size:13px;color:#64748b;margin-top:-8px;margin-bottom:8px">
+        اترك كلمة المرور فارغة للاحتفاظ بالكلمة الحالية
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('user-modal')">إلغاء</button>
+      <button class="btn btn-primary" onclick="saveUser()"><i class="fas fa-save"></i> حفظ</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/js/shared.js"></script>
+<script>
+let allUsers = [], myId = null;
+
+async function loadUsers() {
+  try {
+    allUsers = await api('GET', '/api/users');
+    renderTable(allUsers);
+    renderRoleCards(allUsers);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function renderRoleCards(users) {
+  const roles = { superadmin: 0, quality_manager: 0, quality_staff: 0, dept_head: 0, inspector: 0 };
+  users.forEach(u => { if (roles[u.role] !== undefined) roles[u.role]++; });
+  const icons = { superadmin: 'fa-crown', quality_manager: 'fa-user-shield', quality_staff: 'fa-user-check', dept_head: 'fa-hospital-user', inspector: 'fa-search' };
+  const el = document.getElementById('role-cards');
+  el.innerHTML = Object.entries(roles).map(([role, count]) => `
+    <div class="stat-card" style="padding:14px 16px">
+      <div class="stat-icon teal" style="width:38px;height:38px;font-size:16px"><i class="fas ${icons[role]}"></i></div>
+      <div class="stat-info"><div class="stat-value" style="font-size:20px">${count}</div><div class="stat-label">${roleLabels[role]||role}</div></div>
+    </div>
+  `).join('');
+}
+
+function renderTable(rows) {
+  const tbody = document.getElementById('users-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><i class="fas fa-users"></i><p>لا يوجد مستخدمون</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(u => {
+    const roleColors = {
+      superadmin: 'badge-danger',
+      quality_manager: 'badge-teal',
+      quality_staff: 'badge-info',
+      dept_head: 'badge-warning',
+      inspector: 'badge-secondary',
+    };
+    const isCurrent = u.id === myId;
+    return `<tr ${isCurrent ? 'style="background:#ecfeff"' : ''}>
+      <td>${u.id}</td>
+      <td><strong>${u.name}</strong> ${isCurrent ? '<span class="badge badge-teal" style="font-size:11px">أنت</span>' : ''}</td>
+      <td dir="ltr" style="text-align:right;font-family:monospace">${u.username}</td>
+      <td><span class="badge ${roleColors[u.role]||'badge-secondary'}">${roleLabels[u.role]||u.role}</span></td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-secondary btn-sm btn-icon" onclick="editUser(${u.id})" title="تعديل"><i class="fas fa-edit"></i></button>
+        ${!isCurrent ? `<button class="btn btn-danger btn-sm btn-icon" onclick="deleteUser(${u.id},'${u.name}')" title="حذف"><i class="fas fa-trash"></i></button>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openCreate() {
+  document.getElementById('u-edit-id').value = '';
+  document.getElementById('user-modal-title').textContent = 'مستخدم جديد';
+  document.getElementById('u-name').value = '';
+  document.getElementById('u-username').value = '';
+  document.getElementById('u-password').value = '';
+  document.getElementById('u-role').value = 'inspector';
+  document.getElementById('pass-group').style.display = 'block';
+  document.getElementById('pass-hint').style.display = 'none';
+  document.getElementById('u-password').placeholder = '8 أحرف على الأقل';
+  openModal('user-modal');
+}
+
+function editUser(id) {
+  const u = allUsers.find(x => x.id === id);
+  if (!u) return;
+  document.getElementById('u-edit-id').value = id;
+  document.getElementById('user-modal-title').textContent = 'تعديل المستخدم';
+  document.getElementById('u-name').value = u.name;
+  document.getElementById('u-username').value = u.username;
+  document.getElementById('u-password').value = '';
+  document.getElementById('u-role').value = u.role;
+  document.getElementById('pass-group').style.display = 'block';
+  document.getElementById('pass-hint').style.display = 'block';
+  document.getElementById('u-password').placeholder = '(اتركه فارغاً للاحتفاظ بالكلمة الحالية)';
+  openModal('user-modal');
+}
+
+async function saveUser() {
+  const id = document.getElementById('u-edit-id').value;
+  const body = {
+    name: document.getElementById('u-name').value.trim(),
+    username: document.getElementById('u-username').value.trim(),
+    password: document.getElementById('u-password').value,
+    role: document.getElementById('u-role').value,
+  };
+  if (!body.name || !body.username) return showToast('يرجى ملء الحقول المطلوبة', 'warning');
+  if (!id && !body.password) return showToast('يرجى إدخال كلمة المرور للمستخدم الجديد', 'warning');
+  try {
+    if (id) { await api('PUT', `/api/users/${id}`, body); showToast('تم التحديث', 'success'); }
+    else { await api('POST', '/api/users', body); showToast('تم الإنشاء', 'success'); }
+    closeModal('user-modal');
+    loadUsers();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function deleteUser(id, name) {
+  if (!confirmAction(`هل تريد حذف المستخدم "${name}"؟`)) return;
+  try {
+    await api('DELETE', `/api/users/${id}`);
+    showToast('تم الحذف', 'success');
+    loadUsers();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+async function init() {
+  await initPage('users');
+  const sess = await api('GET', '/api/session');
+  myId = sess.id;
+  loadUsers();
+}
+
+init();
+</script>
+</body>
+</html>

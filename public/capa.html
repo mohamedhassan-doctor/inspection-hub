@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CAPA | Inspection Hub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand"><i class="fas fa-clipboard-check"></i><span>Inspection Hub</span></div>
+    <nav class="sidebar-nav">
+      <a href="/" class="nav-link" data-page="dashboard"><i class="fas fa-tachometer-alt"></i> لوحة التحكم</a>
+      <a href="/inspections" class="nav-link" data-page="inspections"><i class="fas fa-search"></i> الجولات</a>
+      <a href="/checklists" class="nav-link" data-page="checklists"><i class="fas fa-list-check"></i> قوائم التدقيق</a>
+      <a href="/findings" class="nav-link" data-page="findings"><i class="fas fa-exclamation-triangle"></i> المخالفات</a>
+      <a href="/capa" class="nav-link" data-page="capa"><i class="fas fa-tasks"></i> CAPA <span id="capa-badge" class="nav-badge" style="display:none">0</span></a>
+      <a href="/reports" class="nav-link" data-page="reports"><i class="fas fa-chart-bar"></i> التقارير</a>
+      <a href="/users" class="nav-link admin-only" data-page="users"><i class="fas fa-users"></i> المستخدمون</a>
+    </nav>
+    <div class="sidebar-footer"><span id="user-name"></span><a href="/logout" class="logout-btn"><i class="fas fa-sign-out-alt"></i></a></div>
+  </aside>
+
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-title">الإجراءات التصحيحية — CAPA <span>متابعة وإغلاق الإجراءات التصحيحية والوقائية</span></div>
+    </div>
+
+    <!-- Stats -->
+    <div class="cards-row cols-4" id="capa-stats" style="margin-bottom:20px"></div>
+
+    <!-- Filters -->
+    <div class="filter-bar">
+      <input type="text" id="search" class="form-control search" placeholder="🔍 بحث...">
+      <select id="f-status" class="form-control" onchange="loadCapa()">
+        <option value="">كل الحالات</option>
+        <option value="open">مفتوحة</option>
+        <option value="in_progress">جارية</option>
+        <option value="overdue">متأخرة</option>
+        <option value="closed">مغلقة</option>
+      </select>
+      <select id="f-dept" class="form-control" onchange="loadCapa()"><option value="">كل الأقسام</option></select>
+    </div>
+
+    <div class="card">
+      <div class="card-body" style="padding:0">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>الإجراء التصحيحي</th><th>المخالفة</th><th>القسم</th>
+                <th>المسؤول</th><th>الموعد</th><th>الحالة</th><th>الإجراءات</th>
+              </tr>
+            </thead>
+            <tbody id="capa-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal-overlay" id="capa-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">تعديل CAPA</span>
+      <button class="modal-close" onclick="closeModal('capa-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="c-edit-id">
+      <div class="form-group">
+        <label class="form-label">الإجراء التصحيحي *</label>
+        <textarea id="c-action" class="form-control" rows="3"></textarea>
+      </div>
+      <div class="form-row cols-2">
+        <div class="form-group">
+          <label class="form-label">المسؤول</label>
+          <select id="c-resp" class="form-control"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">الموعد النهائي *</label>
+          <input type="date" id="c-due" class="form-control">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">الحالة</label>
+        <select id="c-status" class="form-control">
+          <option value="open">مفتوحة</option>
+          <option value="in_progress">جارية</option>
+          <option value="closed">مغلقة</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">ملاحظات الدليل</label>
+        <textarea id="c-evidence" class="form-control" rows="2"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('capa-modal')">إلغاء</button>
+      <button class="btn btn-success" onclick="closeCapa()"><i class="fas fa-check"></i> إغلاق CAPA</button>
+      <button class="btn btn-primary" onclick="saveCapa()"><i class="fas fa-save"></i> حفظ</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/js/shared.js"></script>
+<script>
+let users = [], depts = [], allCapas = [];
+
+async function loadInit() {
+  [users, depts] = await Promise.all([
+    api('GET', '/api/users/dropdown').catch(() => []),
+    api('GET', '/api/departments'),
+  ]);
+
+  const ds = document.getElementById('f-dept');
+  depts.forEach(d => {
+    const o = document.createElement('option');
+    o.value = d.id; o.textContent = d.name;
+    ds.appendChild(o);
+  });
+
+  const cr = document.getElementById('c-resp');
+  cr.innerHTML = '<option value="">— غير محدد —</option>';
+  users.forEach(u => {
+    const o = document.createElement('option');
+    o.value = u.id; o.textContent = `${u.name} (${roleLabels[u.role]||u.role})`;
+    cr.appendChild(o);
+  });
+}
+
+async function loadCapaStats() {
+  try {
+    const d = await api('GET', '/api/reports/capa-rate');
+    const closureRate = d.total > 0 ? Math.round((d.closed / d.total) * 100) : 0;
+    document.getElementById('capa-stats').innerHTML = `
+      <div class="stat-card"><div class="stat-icon teal"><i class="fas fa-tasks"></i></div><div class="stat-info"><div class="stat-value">${d.total}</div><div class="stat-label">إجمالي CAPA</div></div></div>
+      <div class="stat-card"><div class="stat-icon yellow"><i class="fas fa-spinner"></i></div><div class="stat-info"><div class="stat-value">${d.open}</div><div class="stat-label">مفتوحة / جارية</div></div></div>
+      <div class="stat-card"><div class="stat-icon red"><i class="fas fa-clock"></i></div><div class="stat-info"><div class="stat-value" style="color:#ef4444">${d.overdue}</div><div class="stat-label">متأخرة</div></div></div>
+      <div class="stat-card"><div class="stat-icon green"><i class="fas fa-check-circle"></i></div><div class="stat-info"><div class="stat-value" style="color:#16a34a">${closureRate}%</div><div class="stat-label">معدل الإغلاق</div></div></div>
+    `;
+  } catch {}
+}
+
+async function loadCapa() {
+  try {
+    const params = new URLSearchParams();
+    const status = document.getElementById('f-status').value;
+    const dept = document.getElementById('f-dept').value;
+    if (status) params.set('status', status);
+    if (dept) params.set('dept', dept);
+    allCapas = await api('GET', `/api/capa?${params}`);
+    renderTable(allCapas);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+document.getElementById('search').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  renderTable(allCapas.filter(r => r.action.toLowerCase().includes(q) || (r.dept_name||'').toLowerCase().includes(q)));
+});
+
+function renderTable(rows) {
+  const tbody = document.getElementById('capa-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><i class="fas fa-tasks"></i><p>لا توجد CAPA بعد</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => {
+    const sl = capaStatusLabels[r.status] || { text: r.status, cls: 'badge-secondary' };
+    const sevCls = { critical: 'badge-danger', major: 'badge-warning', observation: 'badge-info' };
+    const sevTxt = { critical: 'حرجة', major: 'رئيسية', observation: 'ملاحظة' };
+    const sevBadge = r.finding_severity
+      ? `<span class="badge ${sevCls[r.finding_severity]||'badge-secondary'}">${sevTxt[r.finding_severity]||r.finding_severity}</span>`
+      : '—';
+    const isOverdue = r.status === 'overdue';
+    return `<tr class="${isOverdue?'overdue':''}">
+      <td style="max-width:200px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.action}">${r.action}</div></td>
+      <td style="max-width:150px;font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.finding_desc||'—'}</td>
+      <td>${r.dept_name||'—'}</td>
+      <td>${r.responsible_name||'—'}</td>
+      <td style="${isOverdue?'color:#dc2626;font-weight:600':''}">${fmtDate(r.due_date)}</td>
+      <td><span class="badge ${sl.cls}">${sl.text}</span> ${sevBadge}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-secondary btn-sm btn-icon" onclick="editCapa(${r.id})" title="تعديل"><i class="fas fa-edit"></i></button>
+        ${r.status!=='closed'?`<button class="btn btn-success btn-sm btn-icon" onclick="quickClose(${r.id})" title="إغلاق"><i class="fas fa-check"></i></button>`:''}
+        <button class="btn btn-danger btn-sm btn-icon" onclick="deleteCapa(${r.id})" title="حذف"><i class="fas fa-trash"></i></button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function editCapa(id) {
+  const c = allCapas.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('c-edit-id').value = id;
+  document.getElementById('c-action').value = c.action;
+  document.getElementById('c-resp').value = c.responsible_id || '';
+  document.getElementById('c-due').value = c.due_date ? c.due_date.slice(0,10) : '';
+  document.getElementById('c-status').value = c.status === 'overdue' ? 'open' : c.status;
+  document.getElementById('c-evidence').value = c.evidence_notes || '';
+  openModal('capa-modal');
+}
+
+async function saveCapa() {
+  const id = document.getElementById('c-edit-id').value;
+  const body = {
+    action: document.getElementById('c-action').value.trim(),
+    responsible_id: document.getElementById('c-resp').value || null,
+    due_date: document.getElementById('c-due').value,
+    status: document.getElementById('c-status').value,
+    evidence_notes: document.getElementById('c-evidence').value.trim() || null,
+  };
+  if (!body.action || !body.due_date) return showToast('يرجى ملء الحقول المطلوبة', 'warning');
+  try {
+    await api('PUT', `/api/capa/${id}`, body);
+    showToast('تم التحديث', 'success');
+    closeModal('capa-modal');
+    loadCapa();
+    loadCapaStats();
+    updateCapaBadge();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function closeCapa() {
+  document.getElementById('c-status').value = 'closed';
+  saveCapa();
+}
+
+async function quickClose(id) {
+  const c = allCapas.find(x => x.id === id);
+  if (!c) return;
+  if (!confirmAction(`هل تريد إغلاق هذا الإجراء التصحيحي؟\n"${c.action.slice(0,60)}"`)) return;
+  try {
+    await api('PUT', `/api/capa/${id}`, { ...c, status: 'closed', responsible_id: c.responsible_id || null });
+    showToast('تم إغلاق CAPA', 'success');
+    loadCapa();
+    loadCapaStats();
+    updateCapaBadge();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function deleteCapa(id) {
+  if (!confirmAction('هل تريد حذف هذا CAPA؟')) return;
+  try {
+    await api('DELETE', `/api/capa/${id}`);
+    showToast('تم الحذف', 'success');
+    loadCapa();
+    loadCapaStats();
+    updateCapaBadge();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+initPage('capa');
+loadInit().then(() => { loadCapa(); loadCapaStats(); });
+</script>
+</body>
+</html>

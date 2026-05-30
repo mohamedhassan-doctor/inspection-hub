@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>الجولات | Inspection Hub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand"><i class="fas fa-clipboard-check"></i><span>Inspection Hub</span></div>
+    <nav class="sidebar-nav">
+      <a href="/" class="nav-link" data-page="dashboard"><i class="fas fa-tachometer-alt"></i> لوحة التحكم</a>
+      <a href="/inspections" class="nav-link" data-page="inspections"><i class="fas fa-search"></i> الجولات</a>
+      <a href="/checklists" class="nav-link" data-page="checklists"><i class="fas fa-list-check"></i> قوائم التدقيق</a>
+      <a href="/findings" class="nav-link" data-page="findings"><i class="fas fa-exclamation-triangle"></i> المخالفات</a>
+      <a href="/capa" class="nav-link" data-page="capa"><i class="fas fa-tasks"></i> CAPA <span id="capa-badge" class="nav-badge" style="display:none">0</span></a>
+      <a href="/reports" class="nav-link" data-page="reports"><i class="fas fa-chart-bar"></i> التقارير</a>
+      <a href="/users" class="nav-link admin-only" data-page="users"><i class="fas fa-users"></i> المستخدمون</a>
+    </nav>
+    <div class="sidebar-footer"><span id="user-name"></span><a href="/logout" class="logout-btn"><i class="fas fa-sign-out-alt"></i></a></div>
+  </aside>
+
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-title">الجولات الرقابية <span>إنشاء وتنفيذ ومتابعة الجولات</span></div>
+      <button class="btn btn-primary" onclick="openCreateModal()"><i class="fas fa-plus"></i> جولة جديدة</button>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-bar">
+      <input type="text" id="search" class="form-control search" placeholder="🔍 بحث في الجولات...">
+      <select id="f-dept" class="form-control" onchange="loadInspections()"><option value="">كل الأقسام</option></select>
+      <select id="f-type" class="form-control" onchange="loadInspections()">
+        <option value="">كل الأنواع</option>
+        <option value="safety">السلامة العامة</option>
+        <option value="infection_control">مكافحة العدوى</option>
+        <option value="fire_safety">سلامة الحريق</option>
+        <option value="cleanliness">النظافة</option>
+        <option value="medication">الأدوية</option>
+        <option value="patient_files">ملفات المرضى</option>
+        <option value="equipment">المعدات</option>
+        <option value="gahar_prep">تحضير GAHAR</option>
+      </select>
+      <select id="f-status" class="form-control" onchange="loadInspections()">
+        <option value="">كل الحالات</option>
+        <option value="scheduled">مجدولة</option>
+        <option value="in_progress">جارية</option>
+        <option value="completed">مكتملة</option>
+        <option value="cancelled">ملغاة</option>
+      </select>
+    </div>
+
+    <!-- Table -->
+    <div class="card">
+      <div class="card-body" style="padding:0">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>العنوان</th><th>النوع</th><th>القسم</th><th>المفتش</th>
+                <th>التاريخ</th><th>الحالة</th><th>المطابقة</th><th>الإجراءات</th>
+              </tr>
+            </thead>
+            <tbody id="insp-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Create / Edit Modal -->
+<div class="modal-overlay" id="insp-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">جولة جديدة</span>
+      <button class="modal-close" onclick="closeModal('insp-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-id">
+      <div class="form-row cols-2">
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">عنوان الجولة *</label>
+          <input type="text" id="f-title" class="form-control" placeholder="مثال: جولة سلامة الطوارئ - مايو">
+        </div>
+        <div class="form-group">
+          <label class="form-label">نوع الجولة *</label>
+          <select id="f-insp-type" class="form-control">
+            <option value="safety">السلامة العامة</option>
+            <option value="infection_control">مكافحة العدوى</option>
+            <option value="fire_safety">سلامة الحريق</option>
+            <option value="cleanliness">النظافة</option>
+            <option value="medication">الأدوية</option>
+            <option value="patient_files">ملفات المرضى</option>
+            <option value="equipment">المعدات</option>
+            <option value="gahar_prep">تحضير GAHAR</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">القسم *</label>
+          <select id="f-dept-sel" class="form-control"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">المفتش</label>
+          <select id="f-inspector" class="form-control"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">تاريخ الجولة *</label>
+          <input type="date" id="f-date" class="form-control">
+        </div>
+        <div class="form-group" id="template-group">
+          <label class="form-label">تحميل قائمة تدقيق</label>
+          <select id="f-template" class="form-control">
+            <option value="">— بدون قائمة —</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('insp-modal')">إلغاء</button>
+      <button class="btn btn-primary" onclick="saveInspection()"><i class="fas fa-save"></i> حفظ</button>
+    </div>
+  </div>
+</div>
+
+<!-- Execute Modal -->
+<div class="modal-overlay" id="exec-modal">
+  <div class="modal modal-xl">
+    <div class="modal-header">
+      <span class="modal-title" id="exec-title">تنفيذ الجولة</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span id="exec-progress-text" style="font-size:13px;color:#64748b"></span>
+        <button class="modal-close" onclick="closeModal('exec-modal')">&times;</button>
+      </div>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+      <div id="exec-items-list"></div>
+      <div id="exec-empty" class="empty-state" style="display:none">
+        <i class="fas fa-list-check"></i>
+        <p>لا توجد بنود في هذه الجولة. يمكنك إنهاؤها مباشرة.</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('exec-modal')">إغلاق</button>
+      <button class="btn btn-success" id="complete-btn" onclick="completeInspection()">
+        <i class="fas fa-check-circle"></i> إنهاء الجولة
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Report Modal -->
+<div class="modal-overlay" id="report-modal">
+  <div class="modal modal-xl">
+    <div class="modal-header">
+      <span class="modal-title">تقرير الجولة</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary btn-sm" onclick="window.print()"><i class="fas fa-print"></i> طباعة / PDF</button>
+        <button class="modal-close" onclick="closeModal('report-modal')">&times;</button>
+      </div>
+    </div>
+    <div class="modal-body" id="report-content"></div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/js/shared.js"></script>
+<script>
+let depts = [], users = [], checklists = [];
+let currentExecId = null;
+let allInspections = [];
+
+async function loadInit() {
+  [depts, users, checklists] = await Promise.all([
+    api('GET', '/api/departments'),
+    api('GET', '/api/users/dropdown').catch(() => []),
+    api('GET', '/api/checklists'),
+  ]);
+  const ds = document.getElementById('f-dept');
+  depts.forEach(d => {
+    const o = document.createElement('option');
+    o.value = d.id; o.textContent = d.name;
+    ds.appendChild(o);
+  });
+}
+
+async function loadInspections() {
+  try {
+    const params = new URLSearchParams();
+    const dept = document.getElementById('f-dept').value;
+    const type = document.getElementById('f-type').value;
+    const status = document.getElementById('f-status').value;
+    if (dept) params.set('dept', dept);
+    if (type) params.set('type', type);
+    if (status) params.set('status', status);
+    allInspections = await api('GET', `/api/inspections?${params}`);
+    renderTable(allInspections);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+document.getElementById('search').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  renderTable(allInspections.filter(r => r.title.toLowerCase().includes(q) || (r.dept_name||'').toLowerCase().includes(q)));
+});
+
+function renderTable(rows) {
+  const tbody = document.getElementById('insp-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><i class="fas fa-clipboard"></i><p>لا توجد جولات بعد</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => {
+    const sl = statusLabels[r.status] || { text: r.status, cls: 'badge-secondary' };
+    const pct = r.compliance_score != null ? `<span class="badge ${complianceBadgeClass(r.compliance_score)}">${r.compliance_score}%</span>` : '—';
+    let actions = `<button class="btn btn-secondary btn-sm btn-icon" onclick="editInspection(${r.id})" title="تعديل"><i class="fas fa-edit"></i></button> `;
+    if (r.status === 'scheduled' || r.status === 'in_progress') {
+      actions += `<button class="btn btn-primary btn-sm btn-icon" onclick="openExec(${r.id})" title="تنفيذ"><i class="fas fa-play"></i></button> `;
+    }
+    if (r.status === 'completed') {
+      actions += `<button class="btn btn-secondary btn-sm btn-icon" onclick="openReport(${r.id})" title="التقرير"><i class="fas fa-file-alt"></i></button> `;
+    }
+    actions += `<button class="btn btn-danger btn-sm btn-icon" onclick="deleteInspection(${r.id})" title="حذف"><i class="fas fa-trash"></i></button>`;
+    return `<tr>
+      <td><strong>${r.title}</strong></td>
+      <td><span class="badge badge-teal">${inspTypeLabels[r.type]||r.type}</span></td>
+      <td>${r.dept_name||'—'}</td>
+      <td>${r.inspector_name||'—'}</td>
+      <td>${fmtDate(r.scheduled_date)}</td>
+      <td><span class="badge ${sl.cls}">${sl.text}</span></td>
+      <td>${pct}</td>
+      <td style="white-space:nowrap">${actions}</td>
+    </tr>`;
+  }).join('');
+}
+
+function openCreateModal() {
+  document.getElementById('edit-id').value = '';
+  document.getElementById('modal-title').textContent = 'جولة جديدة';
+  document.getElementById('f-title').value = '';
+  document.getElementById('f-insp-type').value = 'safety';
+  document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
+  populateDeptSel();
+  populateInspectorSel();
+  populateTemplateSel(null);
+  openModal('insp-modal');
+}
+
+function populateDeptSel(selected) {
+  const sel = document.getElementById('f-dept-sel');
+  sel.innerHTML = '<option value="">— اختر القسم —</option>';
+  depts.forEach(d => {
+    const o = document.createElement('option');
+    o.value = d.id; o.textContent = d.name;
+    if (selected && parseInt(selected) === d.id) o.selected = true;
+    sel.appendChild(o);
+  });
+  sel.addEventListener('change', () => populateTemplateSel(sel.value));
+}
+
+function populateInspectorSel(selected) {
+  const sel = document.getElementById('f-inspector');
+  sel.innerHTML = '<option value="">— المستخدم الحالي —</option>';
+  users.forEach(u => {
+    const o = document.createElement('option');
+    o.value = u.id; o.textContent = `${u.name} (${roleLabels[u.role]||u.role})`;
+    if (selected && parseInt(selected) === u.id) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+
+function populateTemplateSel(deptId) {
+  const sel = document.getElementById('f-template');
+  sel.innerHTML = '<option value="">— بدون قائمة —</option>';
+  const filtered = deptId ? checklists.filter(c => c.dept_id == deptId) : checklists;
+  filtered.forEach(c => {
+    const o = document.createElement('option');
+    o.value = c.id; o.textContent = c.name;
+    sel.appendChild(o);
+  });
+}
+
+async function editInspection(id) {
+  try {
+    const insp = await api('GET', `/api/inspections/${id}`);
+    document.getElementById('edit-id').value = id;
+    document.getElementById('modal-title').textContent = 'تعديل الجولة';
+    document.getElementById('f-title').value = insp.title;
+    document.getElementById('f-insp-type').value = insp.type;
+    document.getElementById('f-date').value = insp.scheduled_date ? insp.scheduled_date.slice(0,10) : '';
+    populateDeptSel(insp.dept_id);
+    populateInspectorSel(insp.inspector_id);
+    populateTemplateSel(insp.dept_id);
+    document.getElementById('template-group').style.display = 'none';
+    openModal('insp-modal');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function saveInspection() {
+  const id = document.getElementById('edit-id').value;
+  const body = {
+    title: document.getElementById('f-title').value.trim(),
+    type: document.getElementById('f-insp-type').value,
+    dept_id: document.getElementById('f-dept-sel').value || null,
+    inspector_id: document.getElementById('f-inspector').value || null,
+    scheduled_date: document.getElementById('f-date').value,
+    template_id: document.getElementById('f-template').value || null,
+  };
+  if (!body.title || !body.scheduled_date) return showToast('يرجى ملء الحقول المطلوبة', 'warning');
+  try {
+    if (id) {
+      body.status = 'scheduled';
+      await api('PUT', `/api/inspections/${id}`, body);
+      showToast('تم تحديث الجولة', 'success');
+    } else {
+      await api('POST', '/api/inspections', body);
+      showToast('تم إنشاء الجولة', 'success');
+    }
+    closeModal('insp-modal');
+    loadInspections();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function deleteInspection(id) {
+  if (!confirmAction('هل تريد حذف هذه الجولة؟')) return;
+  try {
+    await api('DELETE', `/api/inspections/${id}`);
+    showToast('تم الحذف', 'success');
+    loadInspections();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+// ── Execution ──
+async function openExec(id) {
+  currentExecId = id;
+  try {
+    const [insp, items] = await Promise.all([
+      api('GET', `/api/inspections/${id}`),
+      api('GET', `/api/inspections/${id}/items`),
+    ]);
+    if (insp.status === 'scheduled') await api('POST', `/api/inspections/${id}/start`);
+    document.getElementById('exec-title').textContent = `تنفيذ: ${insp.title}`;
+    renderExecItems(items);
+    updateExecProgress(items);
+    openModal('exec-modal');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function renderExecItems(items) {
+  const list = document.getElementById('exec-items-list');
+  const empty = document.getElementById('exec-empty');
+  if (!items.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  list.innerHTML = items.map((item, idx) => {
+    const resultClass = item.result ? `result-${item.result}` : '';
+    return `<div class="inspection-item-row ${resultClass}" id="item-row-${item.id}">
+      <div class="item-header">
+        <div>
+          <div style="font-size:12px;color:#94a3b8;margin-bottom:4px">البند ${idx+1}</div>
+          <div class="item-text">${item.item_text}</div>
+        </div>
+        ${item.gahar_ref ? `<span class="item-gahar">GAHAR: ${item.gahar_ref}</span>` : ''}
+      </div>
+      <div class="item-actions">
+        <div class="result-btn-group">
+          <button class="result-btn ${item.result==='compliant'?'active-compliant':''}" onclick="setResult(${item.id},'compliant',this)">✓ مطابق</button>
+          <button class="result-btn ${item.result==='non_compliant'?'active-non_compliant':''}" onclick="setResult(${item.id},'non_compliant',this)">✗ غير مطابق</button>
+          <button class="result-btn ${item.result==='needs_improvement'?'active-needs_improvement':''}" onclick="setResult(${item.id},'needs_improvement',this)">~ يحتاج تحسين</button>
+          <button class="result-btn ${item.result==='not_applicable'?'active-not_applicable':''}" onclick="setResult(${item.id},'not_applicable',this)">— غير قابل للتطبيق</button>
+        </div>
+        <input type="text" class="form-control item-notes" id="notes-${item.id}" placeholder="ملاحظات..." value="${item.notes||''}" onblur="saveNotes(${item.id},this.value)" style="flex:1;min-width:200px">
+      </div>
+      <div id="finding-section-${item.id}" style="margin-top:10px;display:${item.result==='non_compliant'?'block':'none'}">
+        <button class="btn btn-warning btn-sm" onclick="quickFinding(${item.id},'${item.item_text.replace(/'/g,'\\\'')}')" style="font-size:12px">
+          <i class="fas fa-exclamation-triangle"></i> إنشاء مخالفة
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function updateExecProgress(items) {
+  const answered = items.filter(i => i.result).length;
+  const total = items.length;
+  document.getElementById('exec-progress-text').textContent = `${answered} / ${total} بند مكتمل`;
+}
+
+async function setResult(itemId, result, btn) {
+  try {
+    const notesEl = document.getElementById(`notes-${itemId}`);
+    await api('PUT', `/api/inspections/${currentExecId}/items/${itemId}`, { result, notes: notesEl ? notesEl.value : '' });
+    // Update UI
+    const row = document.getElementById(`item-row-${itemId}`);
+    row.className = `inspection-item-row result-${result}`;
+    row.querySelectorAll('.result-btn').forEach(b => {
+      b.className = 'result-btn';
+    });
+    btn.classList.add(`active-${result}`);
+    // Show/hide finding section
+    const fs = document.getElementById(`finding-section-${itemId}`);
+    if (fs) fs.style.display = result === 'non_compliant' ? 'block' : 'none';
+    // Refresh progress
+    const items = await api('GET', `/api/inspections/${currentExecId}/items`);
+    updateExecProgress(items);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function saveNotes(itemId, notes) {
+  const row = document.getElementById(`item-row-${itemId}`);
+  const resultBtn = row.querySelector('.result-btn[class*="active-"]');
+  if (!resultBtn) return;
+  const result = resultBtn.className.match(/active-(\S+)/)?.[1];
+  if (!result) return;
+  try {
+    await api('PUT', `/api/inspections/${currentExecId}/items/${itemId}`, { result, notes });
+  } catch {}
+}
+
+async function quickFinding(itemId, itemText) {
+  const severity = prompt('مستوى الخطورة (critical / major / observation):', 'major');
+  if (!severity) return;
+  const description = prompt('وصف المخالفة:', itemText);
+  if (!description) return;
+  try {
+    const insp = await api('GET', `/api/inspections/${currentExecId}`);
+    await api('POST', '/api/findings', {
+      inspection_id: currentExecId,
+      item_id: itemId,
+      dept_id: insp.dept_id,
+      severity,
+      description,
+    });
+    showToast('تم إنشاء المخالفة', 'success');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function completeInspection() {
+  if (!confirmAction('هل تريد إنهاء الجولة؟ لن تتمكن من تعديل النتائج بعد ذلك.')) return;
+  try {
+    const d = await api('POST', `/api/inspections/${currentExecId}/complete`);
+    showToast(`تم إنهاء الجولة — نسبة المطابقة: ${d.compliance_score}%`, 'success');
+    closeModal('exec-modal');
+    loadInspections();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+// ── Report ──
+async function openReport(id) {
+  try {
+    const d = await api('GET', `/api/inspections/${id}/report`);
+    const { inspection: i, items, findings } = d;
+    const sl = statusLabels[i.status] || { text: i.status, cls: 'badge-secondary' };
+    const pct = i.compliance_score != null ? i.compliance_score : 0;
+    const itemsHtml = items.map((item, idx) => {
+      const rl = resultLabels[item.result] || { text: item.result || '—', cls: 'badge-secondary' };
+      return `<tr>
+        <td>${idx+1}</td>
+        <td>${item.item_text}</td>
+        <td>${item.gahar_ref||'—'}</td>
+        <td><span class="badge ${rl.cls}">${rl.text}</span></td>
+        <td>${item.notes||'—'}</td>
+      </tr>`;
+    }).join('');
+    const findingsHtml = findings.length ? findings.map(f => {
+      const sl2 = sevLabels[f.severity]||{text:f.severity,cls:'badge badge-secondary'};
+      return `<tr><td><span class="${sl2.cls}">${sl2.text}</span></td><td>${f.description}</td></tr>`;
+    }).join('') : '<tr><td colspan="2" style="text-align:center;color:#94a3b8">لا توجد مخالفات</td></tr>';
+
+    document.getElementById('report-content').innerHTML = `
+      <div style="background:#f8fafc;padding:16px;border-radius:8px;margin-bottom:20px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div><strong>العنوان:</strong> ${i.title}</div>
+          <div><strong>النوع:</strong> ${inspTypeLabels[i.type]||i.type}</div>
+          <div><strong>القسم:</strong> ${i.dept_name||'—'}</div>
+          <div><strong>المفتش:</strong> ${i.inspector_name||'—'}</div>
+          <div><strong>التاريخ:</strong> ${fmtDate(i.scheduled_date)}</div>
+          <div><strong>الحالة:</strong> <span class="badge ${sl.cls}">${sl.text}</span></div>
+        </div>
+        <div style="margin-top:16px;text-align:center">
+          <div style="font-size:36px;font-weight:700;color:${pct>=85?'#16a34a':pct>=70?'#d97706':'#dc2626'}">${pct}%</div>
+          <div style="color:#64748b">نسبة المطابقة</div>
+          <div class="progress-bar-wrap" style="max-width:300px;margin:8px auto 0">
+            <div class="progress-bar ${complianceColor(pct)}" style="width:${pct}%"></div>
+          </div>
+        </div>
+      </div>
+      <h4 style="margin-bottom:12px">بنود الجولة</h4>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>#</th><th>البند</th><th>GAHAR</th><th>النتيجة</th><th>ملاحظات</th></tr></thead>
+          <tbody>${itemsHtml}</tbody>
+        </table>
+      </div>
+      <h4 style="margin:20px 0 12px">المخالفات المرصودة</h4>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>الخطورة</th><th>الوصف</th></tr></thead>
+          <tbody>${findingsHtml}</tbody>
+        </table>
+      </div>
+    `;
+    openModal('report-modal');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+initPage('inspections');
+loadInit().then(loadInspections);
+</script>
+</body>
+</html>

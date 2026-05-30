@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>التقارير | Inspection Hub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand"><i class="fas fa-clipboard-check"></i><span>Inspection Hub</span></div>
+    <nav class="sidebar-nav">
+      <a href="/" class="nav-link" data-page="dashboard"><i class="fas fa-tachometer-alt"></i> لوحة التحكم</a>
+      <a href="/inspections" class="nav-link" data-page="inspections"><i class="fas fa-search"></i> الجولات</a>
+      <a href="/checklists" class="nav-link" data-page="checklists"><i class="fas fa-list-check"></i> قوائم التدقيق</a>
+      <a href="/findings" class="nav-link" data-page="findings"><i class="fas fa-exclamation-triangle"></i> المخالفات</a>
+      <a href="/capa" class="nav-link" data-page="capa"><i class="fas fa-tasks"></i> CAPA <span id="capa-badge" class="nav-badge" style="display:none">0</span></a>
+      <a href="/reports" class="nav-link" data-page="reports"><i class="fas fa-chart-bar"></i> التقارير</a>
+      <a href="/users" class="nav-link admin-only" data-page="users"><i class="fas fa-users"></i> المستخدمون</a>
+    </nav>
+    <div class="sidebar-footer"><span id="user-name"></span><a href="/logout" class="logout-btn"><i class="fas fa-sign-out-alt"></i></a></div>
+  </aside>
+
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-title">التقارير والتحليلات <span>رؤى شاملة لأداء الجولات الرقابية</span></div>
+      <a href="/api/reports/export" class="btn btn-success"><i class="fas fa-file-excel"></i> تصدير Excel</a>
+    </div>
+
+    <!-- Row 1: Compliance + CAPA Rate -->
+    <div class="cards-row cols-2">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="fas fa-chart-bar" style="color:#0e7490"></i> نسبة المطابقة بالأقسام</div>
+        </div>
+        <div class="card-body">
+          <div class="chart-container"><canvas id="compliance-chart"></canvas></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="fas fa-chart-pie" style="color:#0e7490"></i> معدل إغلاق CAPA</div>
+        </div>
+        <div class="card-body">
+          <div class="chart-container"><canvas id="capa-chart"></canvas></div>
+          <div id="capa-rate-summary" style="text-align:center;margin-top:12px;font-size:14px;color:#64748b"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 2: Pareto + Monthly -->
+    <div class="cards-row cols-2">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="fas fa-chart-area" style="color:#0e7490"></i> Pareto — أعلى 10 مخالفات</div>
+        </div>
+        <div class="card-body">
+          <div class="chart-container"><canvas id="pareto-chart"></canvas></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="fas fa-chart-line" style="color:#0e7490"></i> مقارنة الأقسام شهر بشهر</div>
+        </div>
+        <div class="card-body">
+          <div class="chart-container"><canvas id="monthly-chart"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Compliance Table -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-table" style="color:#0e7490"></i> جدول نسب المطابقة</div>
+      </div>
+      <div class="card-body" style="padding:0">
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>القسم</th><th>متوسط المطابقة</th><th>عدد الجولات</th><th>شريط التقدم</th><th>التقييم</th></tr></thead>
+            <tbody id="compliance-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="toast-container"></div>
+<script src="/js/shared.js"></script>
+<script>
+let charts = {};
+
+function destroyChart(id) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+}
+
+async function loadCompliance() {
+  try {
+    const rows = await api('GET', '/api/reports/compliance');
+    // Chart
+    destroyChart('compliance');
+    const labels = rows.map(r => r.name);
+    const data = rows.map(r => parseFloat(r.avg_compliance) || 0);
+    const colors = data.map(v => v >= 85 ? '#22c55e' : v >= 70 ? '#f59e0b' : '#ef4444');
+    charts['compliance'] = new Chart(document.getElementById('compliance-chart'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{ label: 'نسبة المطابقة %', data, backgroundColor: colors, borderRadius: 6 }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { min: 0, max: 100, ticks: { callback: v => v + '%' } },
+          x: { ticks: { font: { family: 'Tajawal' } } }
+        }
+      }
+    });
+
+    // Table
+    const tbody = document.getElementById('compliance-tbody');
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:20px">لا توجد بيانات</td></tr>'; return; }
+    tbody.innerHTML = rows.map(r => {
+      const pct = parseFloat(r.avg_compliance) || 0;
+      const color = complianceColor(pct);
+      const cls = complianceBadgeClass(pct);
+      const rating = pct >= 85 ? '✓ ممتاز' : pct >= 70 ? '~ مقبول' : '✗ يحتاج تحسين';
+      return `<tr>
+        <td><strong>${r.name}</strong></td>
+        <td><span class="badge ${cls}">${pct}%</span></td>
+        <td>${r.count}</td>
+        <td><div class="progress-bar-wrap"><div class="progress-bar ${color}" style="width:${Math.min(pct,100)}%"></div></div></td>
+        <td style="color:${pct>=85?'#16a34a':pct>=70?'#d97706':'#dc2626'}">${rating}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function loadCapaRate() {
+  try {
+    const d = await api('GET', '/api/reports/capa-rate');
+    const closureRate = d.total > 0 ? Math.round((d.closed / d.total) * 100) : 0;
+    document.getElementById('capa-rate-summary').innerHTML =
+      `إجمالي: <strong>${d.total}</strong> | مغلقة: <strong style="color:#16a34a">${d.closed}</strong> | متأخرة: <strong style="color:#ef4444">${d.overdue}</strong> | معدل الإغلاق: <strong style="color:#0e7490">${closureRate}%</strong>`;
+
+    destroyChart('capa');
+    charts['capa'] = new Chart(document.getElementById('capa-chart'), {
+      type: 'doughnut',
+      data: {
+        labels: ['مغلقة', 'مفتوحة/جارية', 'متأخرة'],
+        datasets: [{
+          data: [d.closed, d.open, d.overdue],
+          backgroundColor: ['#22c55e', '#3b82f6', '#ef4444'],
+          borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { font: { family: 'Tajawal' } } }
+        }
+      }
+    });
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function loadPareto() {
+  try {
+    const rows = await api('GET', '/api/reports/pareto');
+    destroyChart('pareto');
+    if (!rows.length) {
+      document.getElementById('pareto-chart').closest('.chart-container').innerHTML =
+        '<div class="empty-state"><i class="fas fa-chart-area"></i><p>لا توجد بيانات كافية</p></div>';
+      return;
+    }
+    const labels = rows.map((r, i) => r.item_text ? (r.item_text.length > 25 ? r.item_text.slice(0,25)+'...' : r.item_text) : `مخالفة ${i+1}`);
+    const data = rows.map(r => r.frequency);
+    const sevColors = rows.map(r => r.severity === 'critical' ? '#ef4444' : r.severity === 'major' ? '#f59e0b' : '#3b82f6');
+
+    charts['pareto'] = new Chart(document.getElementById('pareto-chart'), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{ label: 'التكرار', data, backgroundColor: sevColors, borderRadius: 6 }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { stepSize: 1 } },
+          y: { ticks: { font: { family: 'Tajawal', size: 11 } } }
+        }
+      }
+    });
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function loadMonthly() {
+  try {
+    const rows = await api('GET', '/api/reports/monthly');
+    destroyChart('monthly');
+    if (!rows.length) {
+      document.getElementById('monthly-chart').closest('.chart-container').innerHTML =
+        '<div class="empty-state"><i class="fas fa-chart-line"></i><p>لا توجد بيانات كافية</p></div>';
+      return;
+    }
+    // Pivot data by dept
+    const months = [...new Set(rows.map(r => r.month))].sort();
+    const depts = [...new Set(rows.map(r => r.dept_name))];
+    const palette = ['#0e7490','#2563eb','#16a34a','#d97706','#dc2626','#7c3aed','#db2777','#059669','#ea580c','#6366f1'];
+
+    const datasets = depts.map((dept, i) => ({
+      label: dept,
+      data: months.map(m => {
+        const row = rows.find(r => r.dept_name === dept && r.month === m);
+        return row ? parseFloat(row.avg_compliance) || 0 : null;
+      }),
+      borderColor: palette[i % palette.length],
+      backgroundColor: palette[i % palette.length] + '20',
+      tension: 0.3,
+      fill: false,
+      spanGaps: true,
+    }));
+
+    charts['monthly'] = new Chart(document.getElementById('monthly-chart'), {
+      type: 'line',
+      data: { labels: months, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { font: { family: 'Tajawal', size: 11 }, boxWidth: 12 } }
+        },
+        scales: {
+          y: { min: 0, max: 100, ticks: { callback: v => v + '%' } }
+        }
+      }
+    });
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+initPage('reports');
+Promise.all([loadCompliance(), loadCapaRate(), loadPareto(), loadMonthly()]);
+</script>
+</body>
+</html>

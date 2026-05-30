@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>قوائم التدقيق | Inspection Hub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand"><i class="fas fa-clipboard-check"></i><span>Inspection Hub</span></div>
+    <nav class="sidebar-nav">
+      <a href="/" class="nav-link" data-page="dashboard"><i class="fas fa-tachometer-alt"></i> لوحة التحكم</a>
+      <a href="/inspections" class="nav-link" data-page="inspections"><i class="fas fa-search"></i> الجولات</a>
+      <a href="/checklists" class="nav-link" data-page="checklists"><i class="fas fa-list-check"></i> قوائم التدقيق</a>
+      <a href="/findings" class="nav-link" data-page="findings"><i class="fas fa-exclamation-triangle"></i> المخالفات</a>
+      <a href="/capa" class="nav-link" data-page="capa"><i class="fas fa-tasks"></i> CAPA <span id="capa-badge" class="nav-badge" style="display:none">0</span></a>
+      <a href="/reports" class="nav-link" data-page="reports"><i class="fas fa-chart-bar"></i> التقارير</a>
+      <a href="/users" class="nav-link admin-only" data-page="users"><i class="fas fa-users"></i> المستخدمون</a>
+    </nav>
+    <div class="sidebar-footer"><span id="user-name"></span><a href="/logout" class="logout-btn"><i class="fas fa-sign-out-alt"></i></a></div>
+  </aside>
+
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-title">قوائم التدقيق <span>إدارة قوالب بنود الفحص لكل قسم</span></div>
+      <button class="btn btn-primary" onclick="openCreateTemplate()"><i class="fas fa-plus"></i> قائمة جديدة</button>
+    </div>
+
+    <div class="cards-row cols-2" id="checklists-grid" style="align-items:start"></div>
+  </main>
+</div>
+
+<!-- Template Modal -->
+<div class="modal-overlay" id="tmpl-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="tmpl-modal-title">قائمة جديدة</span>
+      <button class="modal-close" onclick="closeModal('tmpl-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="tmpl-edit-id">
+      <div class="form-group">
+        <label class="form-label">اسم القائمة *</label>
+        <input type="text" id="tmpl-name" class="form-control" placeholder="مثال: قائمة تدقيق الطوارئ">
+      </div>
+      <div class="form-group">
+        <label class="form-label">القسم</label>
+        <select id="tmpl-dept" class="form-control"><option value="">— عام —</option></select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('tmpl-modal')">إلغاء</button>
+      <button class="btn btn-primary" onclick="saveTemplate()"><i class="fas fa-save"></i> حفظ</button>
+    </div>
+  </div>
+</div>
+
+<!-- Item Modal -->
+<div class="modal-overlay" id="item-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="item-modal-title">إضافة بند</span>
+      <button class="modal-close" onclick="closeModal('item-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="item-edit-id">
+      <input type="hidden" id="item-tmpl-id">
+      <div class="form-group">
+        <label class="form-label">نص البند *</label>
+        <textarea id="item-text" class="form-control" rows="3" placeholder="أدخل نص البند..."></textarea>
+      </div>
+      <div class="form-row cols-2">
+        <div class="form-group">
+          <label class="form-label">مرجع GAHAR</label>
+          <input type="text" id="item-gahar" class="form-control" placeholder="مثال: IC.1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">الترتيب</label>
+          <input type="number" id="item-order" class="form-control" min="1" value="1">
+        </div>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="item-active" checked> مفعّل
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('item-modal')">إلغاء</button>
+      <button class="btn btn-primary" onclick="saveItem()"><i class="fas fa-save"></i> حفظ</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/js/shared.js"></script>
+<script>
+let depts = [], checklists = [];
+
+async function loadInit() {
+  depts = await api('GET', '/api/departments');
+  const sel = document.getElementById('tmpl-dept');
+  depts.forEach(d => {
+    const o = document.createElement('option');
+    o.value = d.id; o.textContent = d.name;
+    sel.appendChild(o);
+  });
+}
+
+async function loadChecklists() {
+  checklists = await api('GET', '/api/checklists');
+  const grid = document.getElementById('checklists-grid');
+  if (!checklists.length) {
+    grid.innerHTML = '<div class="card" style="grid-column:1/-1"><div class="card-body empty-state"><i class="fas fa-list-check"></i><p>لا توجد قوائم تدقيق بعد</p></div></div>';
+    return;
+  }
+  grid.innerHTML = checklists.map(t => `
+    <div class="card" style="margin-bottom:0">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-list-check" style="color:#0e7490"></i> ${t.name}</div>
+        <div style="display:flex;gap:6px">
+          <span class="badge badge-secondary">${t.dept_name||'عام'}</span>
+          <span class="badge badge-teal">${t.item_count} بنود</span>
+          <button class="btn btn-secondary btn-sm btn-icon" onclick="editTemplate(${t.id})" title="تعديل"><i class="fas fa-edit"></i></button>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteTemplate(${t.id})" title="حذف"><i class="fas fa-trash"></i></button>
+        </div>
+      </div>
+      <div class="card-body" style="padding:12px 16px" id="items-${t.id}">
+        <div style="text-align:center;color:#94a3b8;padding:20px">
+          <button class="btn btn-secondary btn-sm" onclick="loadItems(${t.id})"><i class="fas fa-expand"></i> عرض البنود</button>
+        </div>
+      </div>
+      <div style="padding:12px 16px;border-top:1px solid #f1f5f9">
+        <button class="btn btn-primary btn-sm" onclick="openAddItem(${t.id})"><i class="fas fa-plus"></i> إضافة بند</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function loadItems(tmplId) {
+  try {
+    const items = await api('GET', `/api/checklists/${tmplId}/items`);
+    const el = document.getElementById(`items-${tmplId}`);
+    if (!items.length) { el.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:16px">لا توجد بنود بعد</div>'; return; }
+    el.innerHTML = items.map(item => `
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9">
+        <span style="color:#94a3b8;font-size:12px;min-width:20px">${item.order_num}</span>
+        <div style="flex:1">
+          <div style="font-size:14px;${!item.active?'opacity:0.5;text-decoration:line-through':''}">${item.text}</div>
+          ${item.gahar_ref?`<span style="font-size:11px;color:#0e7490">GAHAR: ${item.gahar_ref}</span>`:''}
+        </div>
+        <button class="btn btn-secondary btn-sm btn-icon" onclick="editItem(${tmplId},${item.id})" title="تعديل"><i class="fas fa-edit"></i></button>
+        <button class="btn btn-${item.active?'warning':'success'} btn-sm btn-icon" onclick="toggleItem(${tmplId},${item.id},${!item.active})" title="${item.active?'تعطيل':'تفعيل'}">
+          <i class="fas fa-${item.active?'eye-slash':'eye'}"></i>
+        </button>
+        <button class="btn btn-danger btn-sm btn-icon" onclick="deleteItem(${tmplId},${item.id})" title="حذف"><i class="fas fa-trash"></i></button>
+      </div>
+    `).join('') + `<div style="text-align:center;padding-top:8px;color:#64748b;font-size:13px">${items.length} بند إجمالاً</div>`;
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+// ── Templates ──
+function openCreateTemplate() {
+  document.getElementById('tmpl-edit-id').value = '';
+  document.getElementById('tmpl-modal-title').textContent = 'قائمة جديدة';
+  document.getElementById('tmpl-name').value = '';
+  document.getElementById('tmpl-dept').value = '';
+  openModal('tmpl-modal');
+}
+
+async function editTemplate(id) {
+  const t = checklists.find(c => c.id === id);
+  if (!t) return;
+  document.getElementById('tmpl-edit-id').value = id;
+  document.getElementById('tmpl-modal-title').textContent = 'تعديل القائمة';
+  document.getElementById('tmpl-name').value = t.name;
+  document.getElementById('tmpl-dept').value = t.dept_id || '';
+  openModal('tmpl-modal');
+}
+
+async function saveTemplate() {
+  const id = document.getElementById('tmpl-edit-id').value;
+  const body = {
+    name: document.getElementById('tmpl-name').value.trim(),
+    dept_id: document.getElementById('tmpl-dept').value || null,
+  };
+  if (!body.name) return showToast('يرجى إدخال اسم القائمة', 'warning');
+  try {
+    if (id) { await api('PUT', `/api/checklists/${id}`, body); showToast('تم التحديث', 'success'); }
+    else { await api('POST', '/api/checklists', body); showToast('تم الإنشاء', 'success'); }
+    closeModal('tmpl-modal');
+    loadChecklists();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function deleteTemplate(id) {
+  if (!confirmAction('هل تريد حذف هذه القائمة وجميع بنودها؟')) return;
+  try {
+    await api('DELETE', `/api/checklists/${id}`);
+    showToast('تم الحذف', 'success');
+    loadChecklists();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+// ── Items ──
+function openAddItem(tmplId) {
+  document.getElementById('item-edit-id').value = '';
+  document.getElementById('item-tmpl-id').value = tmplId;
+  document.getElementById('item-modal-title').textContent = 'إضافة بند';
+  document.getElementById('item-text').value = '';
+  document.getElementById('item-gahar').value = '';
+  document.getElementById('item-order').value = '';
+  document.getElementById('item-active').checked = true;
+  openModal('item-modal');
+}
+
+async function editItem(tmplId, itemId) {
+  try {
+    const items = await api('GET', `/api/checklists/${tmplId}/items`);
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+    document.getElementById('item-edit-id').value = itemId;
+    document.getElementById('item-tmpl-id').value = tmplId;
+    document.getElementById('item-modal-title').textContent = 'تعديل البند';
+    document.getElementById('item-text').value = item.text;
+    document.getElementById('item-gahar').value = item.gahar_ref || '';
+    document.getElementById('item-order').value = item.order_num || '';
+    document.getElementById('item-active').checked = item.active;
+    openModal('item-modal');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function saveItem() {
+  const id = document.getElementById('item-edit-id').value;
+  const tmplId = document.getElementById('item-tmpl-id').value;
+  const body = {
+    text: document.getElementById('item-text').value.trim(),
+    gahar_ref: document.getElementById('item-gahar').value.trim() || null,
+    order_num: parseInt(document.getElementById('item-order').value) || null,
+    active: document.getElementById('item-active').checked,
+  };
+  if (!body.text) return showToast('يرجى إدخال نص البند', 'warning');
+  try {
+    if (id) { await api('PUT', `/api/checklists/${tmplId}/items/${id}`, body); showToast('تم التحديث', 'success'); }
+    else { await api('POST', `/api/checklists/${tmplId}/items`, body); showToast('تم الإضافة', 'success'); }
+    closeModal('item-modal');
+    loadItems(parseInt(tmplId));
+    loadChecklists();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function toggleItem(tmplId, itemId, newActive) {
+  try {
+    await api('PUT', `/api/checklists/${tmplId}/items/${itemId}`, { active: newActive });
+    showToast(newActive ? 'تم التفعيل' : 'تم التعطيل', 'success');
+    loadItems(tmplId);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function deleteItem(tmplId, itemId) {
+  if (!confirmAction('هل تريد حذف هذا البند؟')) return;
+  try {
+    await api('DELETE', `/api/checklists/${tmplId}/items/${itemId}`);
+    showToast('تم الحذف', 'success');
+    loadItems(tmplId);
+    loadChecklists();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+initPage('checklists');
+loadInit().then(loadChecklists);
+</script>
+</body>
+</html>
