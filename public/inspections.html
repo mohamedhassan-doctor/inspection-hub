@@ -89,7 +89,8 @@
       <div class="form-row cols-2">
         <div class="form-group" style="grid-column:1/-1">
           <label class="form-label">عنوان الجولة *</label>
-          <input type="text" id="f-title" class="form-control" placeholder="مثال: جولة سلامة الطوارئ - مايو">
+          <input type="text" id="f-title" class="form-control" placeholder="سيتم التوليد تلقائياً عند اختيار النوع والقسم والتاريخ">
+          <small id="f-title-hint" style="color:#94a3b8;font-size:12px;display:none">سيتم التوليد تلقائياً عند اختيار النوع والقسم والتاريخ</small>
         </div>
         <div class="form-group">
           <label class="form-label">نوع الجولة *</label>
@@ -217,6 +218,7 @@ document.getElementById('search').addEventListener('input', function() {
 
 document.getElementById('f-template').addEventListener('change', onTemplateChange);
 document.getElementById('f-insp-type').addEventListener('change', onInspTypeChange);
+document.getElementById('f-date').addEventListener('change', suggestTitle);
 
 function renderTable(rows) {
   const tbody = document.getElementById('insp-tbody');
@@ -256,6 +258,7 @@ function openCreateModal() {
   document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
   // Always show the template group (may have been hidden by editInspection)
   document.getElementById('template-group').style.display = '';
+  document.getElementById('f-title-hint').style.display = '';
   populateDeptSel();
   populateInspectorSel();
   populateTemplateSel(null, 'environmental_safety');
@@ -282,6 +285,7 @@ function populateDeptSel(selected) {
       const inspType = document.getElementById('f-insp-type').value;
       populateTemplateSel(sel.value, inspType);
     }
+    suggestTitle();
   };
 }
 
@@ -324,6 +328,20 @@ function onInspTypeChange() {
   const inspType = document.getElementById('f-insp-type').value;
   const deptId = document.getElementById('f-dept-sel').value;
   populateTemplateSel(deptId || null, inspType);
+  suggestTitle();
+}
+
+async function suggestTitle() {
+  if (document.getElementById('edit-id').value) return;
+  const type = document.getElementById('f-insp-type').value;
+  const deptId = document.getElementById('f-dept-sel').value;
+  const date = document.getElementById('f-date').value;
+  if (!type || !deptId || !date) return;
+  try {
+    const params = new URLSearchParams({ type, dept_id: deptId, date });
+    const data = await api('GET', `/api/inspections/suggest-title?${params}`);
+    if (data.title) document.getElementById('f-title').value = data.title;
+  } catch (e) { /* silent */ }
 }
 
 function onTemplateChange() {
@@ -371,6 +389,7 @@ async function editInspection(id) {
     populateTemplateSel(null, insp.type);
     if (insp.template_id) document.getElementById('f-template').value = insp.template_id;
     document.getElementById('template-group').style.display = '';
+    document.getElementById('f-title-hint').style.display = 'none';
     const deptSel = document.getElementById('f-dept-sel');
     deptSel.disabled = false;
     deptSel.style.opacity = '';

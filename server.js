@@ -523,6 +523,46 @@ app.get('/api/inspections', requireAuthAPI, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
 });
 
+app.get('/api/inspections/suggest-title', requireAuthAPI, async (req, res) => {
+  try {
+    const { type, dept_id, date } = req.query;
+    if (!type || !dept_id || !date) return res.json({ title: '' });
+    const arabicMonths = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+    const typeLabels = {
+      environmental_safety: 'السلامة البيئية',
+      patient_safety: 'سلامة المريض',
+      infection_control: 'مكافحة العدوى',
+      fire_safety: 'سلامة الحريق',
+      medication: 'الأدوية',
+      medical_equipment: 'المعدات الطبية',
+      facilities_infrastructure: 'المرافق والبنية التحتية',
+      radiation_safety: 'السلامة الإشعاعية',
+      lab_safety: 'سلامة المعمل',
+      surgical_safety: 'السلامة الجراحية',
+      comprehensive_multidisciplinary: 'جولة شاملة متعددة التخصصات',
+      safety: 'السلامة البيئية',
+      cleanliness: 'النظافة',
+      patient_files: 'ملفات المرضى',
+      equipment: 'المعدات الطبية',
+      gahar_prep: 'تحضير GAHAR',
+      facilities: 'المرافق والبنية التحتية',
+      multi: 'جولة شاملة',
+    };
+    const { rows: [dept] } = await pool.query('SELECT name FROM departments WHERE id=$1', [dept_id]);
+    if (!dept) return res.json({ title: '' });
+    const d = new Date(date);
+    const month = arabicMonths[d.getMonth()];
+    const year = d.getFullYear();
+    const typeLabel = typeLabels[type] || type;
+    const base = `جولة ${typeLabel} — ${dept.name} — ${month} ${year}`;
+    const { rows: [{ count }] } = await pool.query(
+      `SELECT COUNT(*)::int AS count FROM inspections WHERE type=$1 AND dept_id=$2 AND DATE_TRUNC('month',scheduled_date)=DATE_TRUNC('month',$3::date)`,
+      [type, dept_id, date]
+    );
+    res.json({ title: count === 0 ? base : `${base} (${count + 1})` });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
+});
+
 app.post('/api/inspections', requireAuthAPI, async (req, res) => {
   try {
     const { title, type, inspector_id, scheduled_date, template_id } = req.body;
