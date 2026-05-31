@@ -50,6 +50,8 @@ async function initPage(activeLink) {
     updateCapaBadge();
     setInterval(updateCapaBadge, 5 * 60 * 1000);
 
+    setupMobileSidebar();
+
   } catch {
     window.location.href = '/login';
   }
@@ -145,4 +147,47 @@ function complianceBadgeClass(pct) {
   if (pct >= 85) return 'badge-success';
   if (pct >= 70) return 'badge-warning';
   return 'badge-danger';
+}
+
+// ── Mobile sidebar ──
+function setupMobileSidebar() {
+  if (!document.querySelector('.sidebar')) return;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'mob-overlay';
+  overlay.id = 'mob-overlay';
+  overlay.addEventListener('click', closeMobileSidebar);
+  document.body.appendChild(overlay);
+
+  const btn = document.createElement('button');
+  btn.className = 'mob-hamburger';
+  btn.id = 'mob-hamburger';
+  btn.setAttribute('aria-label', 'القائمة');
+  btn.innerHTML = '<i class="fas fa-bars"></i>';
+  btn.addEventListener('click', toggleMobileSidebar);
+  document.body.appendChild(btn);
+
+  document.querySelectorAll('.nav-link').forEach(link => {
+    link.addEventListener('click', closeMobileSidebar);
+  });
+}
+
+function toggleMobileSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  const overlay = document.getElementById('mob-overlay');
+  const btn = document.getElementById('mob-hamburger');
+  const isOpen = sidebar.classList.contains('mobile-open');
+  sidebar.classList.toggle('mobile-open', !isOpen);
+  overlay.classList.toggle('open', !isOpen);
+  btn.innerHTML = isOpen ? '<i class="fas fa-bars"></i>' : '<i class="fas fa-times"></i>';
+}
+
+function closeMobileSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  const overlay = document.getElementById('mob-overlay');
+  const btn = document.getElementById('mob-hamburger');
+  if (!sidebar) return;
+  sidebar.classList.remove('mobile-open');
+  if (overlay) overlay.classList.remove('open');
+  if (btn) btn.innerHTML = '<i class="fas fa-bars"></i>';
 }

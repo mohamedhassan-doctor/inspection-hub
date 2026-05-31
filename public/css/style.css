@@ -496,14 +496,182 @@ tr.overdue td { color: #7f1d1d; }
 .empty-state i { font-size: 48px; margin-bottom: 16px; }
 .empty-state p { font-size: 15px; }
 
-/* ── Responsive ── */
-@media (max-width: 768px) {
-  .sidebar { width: 200px; }
-  .main-content { margin-right: 200px; padding: 18px; }
+/* ── Mobile sidebar helpers (injected by shared.js) ── */
+.mob-hamburger {
+  display: none;
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 400;
+  background: #0e7490;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+
+.mob-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 299;
+}
+.mob-overlay.open { display: block; }
+
+/* ── Tablet ── */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .sidebar { width: 210px; }
+  .main-content { margin-right: 210px; padding: 20px; }
   .cards-row.cols-4 { grid-template-columns: repeat(2, 1fr); }
 }
 
-@media (max-width: 560px) {
-  .sidebar { display: none; }
-  .main-content { margin-right: 0; }
+/* ── Mobile (max 767px) ── */
+@media (max-width: 767px) {
+
+  /* Sidebar — slide in/out from right (RTL) */
+  .sidebar {
+    transform: translateX(110%);
+    transition: transform 0.3s ease;
+    z-index: 300;
+    width: 270px;
+  }
+  .sidebar.mobile-open { transform: translateX(0); }
+
+  /* Hamburger visible on mobile */
+  .mob-hamburger { display: flex; }
+
+  /* Main content — full width, top gap for hamburger */
+  .main-content {
+    margin-right: 0 !important;
+    padding: 60px 14px 24px;
+  }
+
+  /* Typography — 16px minimum prevents iOS auto-zoom on inputs */
+  .form-control {
+    font-size: 16px !important;
+    padding: 12px 14px;
+    min-height: 44px;
+  }
+  .form-label { font-size: 15px; }
+  table { font-size: 13px; }
+
+  /* Buttons — 44px minimum touch target */
+  .btn { min-height: 44px; font-size: 15px; }
+  .btn-sm { min-height: 36px; font-size: 13px; }
+  .btn-icon { min-width: 44px; }
+
+  /* Page header stacks vertically */
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  /* Card & grid collapses */
+  .cards-row.cols-4 { grid-template-columns: 1fr 1fr; }
+  .cards-row.cols-3 { grid-template-columns: 1fr 1fr; }
+  .cards-row.cols-2 { grid-template-columns: 1fr; }
+  .form-row.cols-2 { grid-template-columns: 1fr !important; }
+  .form-row.cols-3 { grid-template-columns: 1fr !important; }
+
+  /* Stat cards */
+  .stat-card { padding: 14px 16px; gap: 12px; }
+  .stat-value { font-size: 22px; }
+  .stat-icon { width: 42px; height: 42px; font-size: 18px; }
+
+  /* Card headers wrap */
+  .card-header { flex-wrap: wrap; gap: 8px; }
+
+  /* Filter bar stacks */
+  .filter-bar { flex-direction: column; gap: 8px; }
+  .filter-bar .form-control,
+  .filter-bar .form-control.search { width: 100%; min-width: 100%; }
+
+  /* Tables — hide tagged columns, smooth scroll */
+  .table-wrapper { -webkit-overflow-scrolling: touch; }
+  thead th, tbody td { padding: 10px 8px; }
+  .col-hide-mobile { display: none !important; }
+
+  /* Charts fill width */
+  .chart-container { height: 250px !important; }
+
+  /* Modals — full screen on mobile */
+  .modal-overlay.open { align-items: flex-start; }
+  .modal {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100dvh;
+    max-height: 100vh !important;
+    border-radius: 0 !important;
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-header { padding: 14px 16px; }
+  .modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    max-height: none !important;
+  }
+  .modal-footer { flex-wrap: wrap; padding: 12px 16px; }
+  .modal-footer .btn { flex: 1; justify-content: center; }
+  .modal-close {
+    font-size: 26px;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Checklist execution — result buttons in 2×2 grid */
+  .result-btn-group {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .result-btn {
+    min-height: 48px;
+    font-size: 14px;
+    padding: 8px 4px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .item-actions { flex-direction: column; gap: 10px; }
+  .item-notes { width: 100% !important; min-width: 0 !important; }
+
+  /* Section headers sticky while scrolling execution list */
+  .exec-section-hdr {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    border-radius: 0 !important;
+  }
+
+  /* CAPA — overdue row: red right border (RTL side) */
+  tr.overdue { border-right: 4px solid #ef4444; }
+
+  /* Toast moves up to avoid mobile nav bars */
+  #toast-container { bottom: 70px; left: 10px; right: 10px; }
+  .toast { max-width: 100%; width: 100%; }
+
+  /* Login page full-screen */
+  .login-box {
+    border-radius: 0;
+    padding: 28px 20px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
 }

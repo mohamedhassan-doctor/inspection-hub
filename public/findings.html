@@ -55,8 +55,8 @@
           <table>
             <thead>
               <tr>
-                <th>الوصف</th><th>الخطورة</th><th>القسم</th><th>الجولة</th>
-                <th>التاريخ</th><th>CAPA</th><th>الإجراءات</th>
+                <th>الوصف</th><th>الخطورة</th><th class="col-hide-mobile">القسم</th><th class="col-hide-mobile">الجولة</th>
+                <th class="col-hide-mobile">التاريخ</th><th>CAPA</th><th>الإجراءات</th>
               </tr>
             </thead>
             <tbody id="findings-tbody"></tbody>
@@ -211,9 +211,9 @@ function renderTable(rows) {
     return `<tr>
       <td style="max-width:220px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.description}">${r.description}</div></td>
       <td><span class="${sl.cls}">${sl.text}</span></td>
-      <td>${r.dept_name||'—'}</td>
-      <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.inspection_title||'—'}</td>
-      <td>${fmtDate(r.created_at)}</td>
+      <td class="col-hide-mobile">${r.dept_name||'—'}</td>
+      <td class="col-hide-mobile" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.inspection_title||'—'}</td>
+      <td class="col-hide-mobile">${fmtDate(r.created_at)}</td>
       <td>${capaBadge}</td>
       <td style="white-space:nowrap">${actions}</td>
     </tr>`;

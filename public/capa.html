@@ -52,8 +52,8 @@
           <table>
             <thead>
               <tr>
-                <th>الإجراء التصحيحي</th><th>المخالفة</th><th>القسم</th>
-                <th>المسؤول</th><th>الموعد</th><th>الحالة</th><th>الإجراءات</th>
+                <th>الإجراء التصحيحي</th><th class="col-hide-mobile">المخالفة</th><th class="col-hide-mobile">القسم</th>
+                <th class="col-hide-mobile">المسؤول</th><th>الموعد</th><th>الحالة</th><th>الإجراءات</th>
               </tr>
             </thead>
             <tbody id="capa-tbody"></tbody>
@@ -181,9 +181,9 @@ function renderTable(rows) {
     const isOverdue = r.status === 'overdue';
     return `<tr class="${isOverdue?'overdue':''}">
       <td style="max-width:200px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.action}">${r.action}</div></td>
-      <td style="max-width:150px;font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.finding_desc||'—'}</td>
-      <td>${r.dept_name||'—'}</td>
-      <td>${r.responsible_name||'—'}</td>
+      <td class="col-hide-mobile" style="max-width:150px;font-size:12px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.finding_desc||'—'}</td>
+      <td class="col-hide-mobile">${r.dept_name||'—'}</td>
+      <td class="col-hide-mobile">${r.responsible_name||'—'}</td>
       <td style="${isOverdue?'color:#dc2626;font-weight:600':''}">${fmtDate(r.due_date)}</td>
       <td><span class="badge ${sl.cls}">${sl.text}</span> ${sevBadge}</td>
       <td style="white-space:nowrap">

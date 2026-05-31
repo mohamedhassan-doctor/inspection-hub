@@ -65,8 +65,8 @@
           <table>
             <thead>
               <tr>
-                <th>العنوان</th><th>النوع</th><th>القسم</th><th>المفتش</th>
-                <th>التاريخ</th><th>الحالة</th><th>المطابقة</th><th>الإجراءات</th>
+                <th>العنوان</th><th>النوع</th><th class="col-hide-mobile">القسم</th><th class="col-hide-mobile">المفتش</th>
+                <th>التاريخ</th><th>الحالة</th><th class="col-hide-mobile">المطابقة</th><th>الإجراءات</th>
               </tr>
             </thead>
             <tbody id="insp-tbody"></tbody>
@@ -240,11 +240,11 @@ function renderTable(rows) {
     return `<tr>
       <td><strong>${r.title}</strong></td>
       <td><span class="badge badge-teal">${inspTypeLabels[r.type]||r.type}</span></td>
-      <td>${r.dept_name||'—'}</td>
-      <td>${r.inspector_name||'—'}</td>
+      <td class="col-hide-mobile">${r.dept_name||'—'}</td>
+      <td class="col-hide-mobile">${r.inspector_name||'—'}</td>
       <td>${fmtDate(r.scheduled_date)}</td>
       <td><span class="badge ${sl.cls}">${sl.text}</span></td>
-      <td>${pct}</td>
+      <td class="col-hide-mobile">${pct}</td>
       <td style="white-space:nowrap">${actions}</td>
     </tr>`;
   }).join('');
@@ -503,7 +503,7 @@ function renderExecItems(items) {
     }).join('');
 
     return `<div style="margin-bottom:16px">
-      <div style="background:#f1f5f9;padding:8px 16px;display:flex;align-items:center;gap:8px;border-radius:8px 8px 0 0;border:1px solid #e2e8f0;border-bottom:none">
+      <div class="exec-section-hdr" style="background:#f1f5f9;padding:8px 16px;display:flex;align-items:center;gap:8px;border-radius:8px 8px 0 0;border:1px solid #e2e8f0;border-bottom:none">
         <i class="fas fa-layer-group" style="color:#0e7490"></i>
         <span style="font-weight:700;color:#0e7490;flex:1">${secName}</span>
         <span data-sec-stat="${secName}" style="font-size:13px;font-weight:600;color:${pctColor}">${pctText}</span>
