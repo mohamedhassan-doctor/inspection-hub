@@ -57,6 +57,23 @@
         <label class="form-label">القسم</label>
         <select id="tmpl-dept" class="form-control"><option value="">— اختر القسم —</option></select>
       </div>
+      <div class="form-group">
+        <label class="form-label">نوع الجولة المرتبط</label>
+        <select id="tmpl-insp-type" class="form-control">
+          <option value="">— غير محدد —</option>
+          <option value="environmental_safety">السلامة البيئية</option>
+          <option value="patient_safety">سلامة المريض</option>
+          <option value="infection_control">مكافحة العدوى</option>
+          <option value="fire_safety">سلامة الحريق</option>
+          <option value="medication">الأدوية</option>
+          <option value="medical_equipment">المعدات الطبية</option>
+          <option value="facilities_infrastructure">المرافق والبنية التحتية</option>
+          <option value="radiation_safety">السلامة الإشعاعية</option>
+          <option value="lab_safety">سلامة المعمل</option>
+          <option value="surgical_safety">السلامة الجراحية</option>
+          <option value="comprehensive_multidisciplinary">جولة شاملة متعددة التخصصات</option>
+        </select>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('tmpl-modal')">إلغاء</button>
@@ -120,12 +137,14 @@ async function loadInit() {
 function renderChecklistCard(t) {
   const globalBadge = t.is_global ? `<span class="badge badge-teal">عام 🌐</span>` : '';
   const deptLabel = t.is_global ? 'جميع الأقسام' : (t.dept_name || 'عام');
+  const typeBadge = t.inspection_type ? `<span class="badge badge-info">${inspTypeLabels[t.inspection_type]||t.inspection_type}</span>` : '';
   return `
     <div class="card" style="margin-bottom:0">
       <div class="card-header">
         <div class="card-title"><i class="fas fa-list-check" style="color:#0e7490"></i> ${t.name}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
           ${globalBadge}
+          ${typeBadge}
           <span class="badge badge-secondary">${deptLabel}</span>
           <span class="badge badge-teal">${t.item_count} بنود</span>
           <button class="btn btn-secondary btn-sm btn-icon" onclick="editTemplate(${t.id})" title="تعديل"><i class="fas fa-edit"></i></button>
@@ -204,6 +223,7 @@ function openCreateTemplate() {
   document.getElementById('tmpl-is-global').checked = false;
   document.getElementById('tmpl-dept').value = '';
   document.getElementById('tmpl-dept-group').style.display = 'block';
+  document.getElementById('tmpl-insp-type').value = '';
   openModal('tmpl-modal');
 }
 
@@ -216,6 +236,7 @@ async function editTemplate(id) {
   document.getElementById('tmpl-is-global').checked = !!t.is_global;
   document.getElementById('tmpl-dept').value = t.dept_id || '';
   document.getElementById('tmpl-dept-group').style.display = t.is_global ? 'none' : 'block';
+  document.getElementById('tmpl-insp-type').value = t.inspection_type || '';
   openModal('tmpl-modal');
 }
 
@@ -226,6 +247,7 @@ async function saveTemplate() {
     name: document.getElementById('tmpl-name').value.trim(),
     dept_id: isGlobal ? null : (document.getElementById('tmpl-dept').value || null),
     is_global: isGlobal,
+    inspection_type: document.getElementById('tmpl-insp-type').value || null,
   };
   if (!body.name) return showToast('يرجى إدخال اسم القائمة', 'warning');
   try {

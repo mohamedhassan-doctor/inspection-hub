@@ -216,6 +216,7 @@ document.getElementById('search').addEventListener('input', function() {
 });
 
 document.getElementById('f-template').addEventListener('change', onTemplateChange);
+document.getElementById('f-insp-type').addEventListener('change', onInspTypeChange);
 
 function renderTable(rows) {
   const tbody = document.getElementById('insp-tbody');
@@ -257,7 +258,7 @@ function openCreateModal() {
   document.getElementById('template-group').style.display = '';
   populateDeptSel();
   populateInspectorSel();
-  populateTemplateSel(null);
+  populateTemplateSel(null, 'environmental_safety');
   const deptSel = document.getElementById('f-dept-sel');
   deptSel.disabled = false;
   deptSel.style.opacity = '';
@@ -278,7 +279,8 @@ function populateDeptSel(selected) {
     const templateSel = document.getElementById('f-template');
     const chosen = checklists.find(c => c.id == templateSel.value);
     if (!templateSel.value || (chosen && chosen.is_global)) {
-      populateTemplateSel(sel.value);
+      const inspType = document.getElementById('f-insp-type').value;
+      populateTemplateSel(sel.value, inspType);
     }
   };
 }
@@ -294,28 +296,39 @@ function populateInspectorSel(selected) {
   });
 }
 
-function populateTemplateSel(deptId) {
+function populateTemplateSel(deptId, inspType) {
   const sel = document.getElementById('f-template');
   const prevVal = sel.value;
   sel.innerHTML = '<option value="">— بدون قائمة —</option>';
-  const filtered = deptId
+  let pool = deptId
     ? checklists.filter(c => c.dept_id == deptId || c.is_global)
-    : checklists;
-  filtered.forEach(c => {
+    : checklists.slice();
+  if (inspType) {
+    const matched = pool.filter(c => c.inspection_type === inspType);
+    const others  = pool.filter(c => c.inspection_type !== inspType && (c.is_global || !c.inspection_type));
+    pool = [...matched, ...others];
+  }
+  pool.forEach(c => {
     const o = document.createElement('option');
     o.value = c.id;
     o.textContent = c.is_global ? `${c.name} 🌐` : c.name;
     o.dataset.isGlobal = c.is_global ? '1' : '0';
     o.dataset.deptId = c.dept_id || '';
+    o.dataset.inspType = c.inspection_type || '';
     if (prevVal && c.id == prevVal) o.selected = true;
     sel.appendChild(o);
   });
 }
 
+function onInspTypeChange() {
+  const inspType = document.getElementById('f-insp-type').value;
+  const deptId = document.getElementById('f-dept-sel').value;
+  populateTemplateSel(deptId || null, inspType);
+}
+
 function onTemplateChange() {
   const templateSel = document.getElementById('f-template');
   const deptSel = document.getElementById('f-dept-sel');
-  const deptLabel = document.querySelector('label[for="f-dept-sel"], #dept-label');
 
   if (!templateSel.value) {
     deptSel.disabled = false;
@@ -326,6 +339,11 @@ function onTemplateChange() {
   const opt = templateSel.options[templateSel.selectedIndex];
   const isGlobal = opt.dataset.isGlobal === '1';
   const tmplDeptId = opt.dataset.deptId;
+  const tmplInspType = opt.dataset.inspType;
+
+  if (tmplInspType) {
+    document.getElementById('f-insp-type').value = tmplInspType;
+  }
 
   if (isGlobal) {
     deptSel.disabled = false;
@@ -350,8 +368,7 @@ async function editInspection(id) {
     document.getElementById('f-date').value = insp.scheduled_date ? insp.scheduled_date.slice(0,10) : '';
     populateDeptSel(insp.dept_id);
     populateInspectorSel(insp.inspector_id);
-    // Show ALL templates (same as new inspection form) and pre-select saved template
-    populateTemplateSel(null);
+    populateTemplateSel(null, insp.type);
     if (insp.template_id) document.getElementById('f-template').value = insp.template_id;
     document.getElementById('template-group').style.display = '';
     const deptSel = document.getElementById('f-dept-sel');

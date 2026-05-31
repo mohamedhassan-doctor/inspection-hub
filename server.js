@@ -112,6 +112,7 @@ async function initDB() {
       name TEXT NOT NULL,
       dept_id INTEGER REFERENCES departments(id) ON DELETE SET NULL,
       is_global BOOLEAN DEFAULT false,
+      inspection_type TEXT DEFAULT null,
       created_at TIMESTAMP DEFAULT NOW()
     );
 
@@ -188,6 +189,7 @@ async function initDB() {
   await pool.query(`ALTER TABLE checklist_templates ADD COLUMN IF NOT EXISTS is_global BOOLEAN DEFAULT false`);
   await pool.query(`UPDATE checklist_templates SET is_global=true, dept_id=null WHERE name='قائمة تدقيق مكافحة العدوى' AND is_global=false`);
   await pool.query(`ALTER TABLE inspections ADD COLUMN IF NOT EXISTS template_id INTEGER REFERENCES checklist_templates(id) ON DELETE SET NULL`);
+  await pool.query(`ALTER TABLE checklist_templates ADD COLUMN IF NOT EXISTS inspection_type TEXT DEFAULT null`);
 
   // Seed if empty
   const { rows: uRows } = await pool.query('SELECT COUNT(*) FROM users');
@@ -696,11 +698,11 @@ app.get('/api/checklists', requireAuthAPI, async (req, res) => {
 
 app.post('/api/checklists', requireAuthAPI, requireRole('superadmin', 'quality_manager'), async (req, res) => {
   try {
-    const { name, dept_id, is_global } = req.body;
+    const { name, dept_id, is_global, inspection_type } = req.body;
     const globalFlag = is_global === true || is_global === 'true';
     const { rows: [t] } = await pool.query(
-      "INSERT INTO checklist_templates(name,dept_id,is_global) VALUES($1,$2,$3) RETURNING *",
-      [name, globalFlag ? null : (dept_id || null), globalFlag]
+      "INSERT INTO checklist_templates(name,dept_id,is_global,inspection_type) VALUES($1,$2,$3,$4) RETURNING *",
+      [name, globalFlag ? null : (dept_id || null), globalFlag, inspection_type || null]
     );
     res.json(t);
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
@@ -708,11 +710,11 @@ app.post('/api/checklists', requireAuthAPI, requireRole('superadmin', 'quality_m
 
 app.put('/api/checklists/:id', requireAuthAPI, requireRole('superadmin', 'quality_manager'), async (req, res) => {
   try {
-    const { name, dept_id, is_global } = req.body;
+    const { name, dept_id, is_global, inspection_type } = req.body;
     const globalFlag = is_global === true || is_global === 'true';
     const { rows: [t] } = await pool.query(
-      "UPDATE checklist_templates SET name=$1,dept_id=$2,is_global=$3 WHERE id=$4 RETURNING *",
-      [name, globalFlag ? null : (dept_id || null), globalFlag, req.params.id]
+      "UPDATE checklist_templates SET name=$1,dept_id=$2,is_global=$3,inspection_type=$4 WHERE id=$5 RETURNING *",
+      [name, globalFlag ? null : (dept_id || null), globalFlag, inspection_type || null, req.params.id]
     );
     res.json(t);
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
