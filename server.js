@@ -122,7 +122,8 @@ async function initDB() {
       text TEXT NOT NULL,
       gahar_ref TEXT,
       order_num INTEGER DEFAULT 0,
-      active BOOLEAN DEFAULT true
+      active BOOLEAN DEFAULT true,
+      section_name TEXT DEFAULT 'عام'
     );
 
     CREATE TABLE IF NOT EXISTS inspections (
@@ -144,7 +145,8 @@ async function initDB() {
       gahar_ref TEXT,
       result TEXT,
       notes TEXT,
-      photo_url TEXT
+      photo_url TEXT,
+      section_name TEXT DEFAULT 'عام'
     );
 
     CREATE TABLE IF NOT EXISTS findings (
@@ -190,6 +192,10 @@ async function initDB() {
   await pool.query(`UPDATE checklist_templates SET is_global=true, dept_id=null WHERE name='قائمة تدقيق مكافحة العدوى' AND is_global=false`);
   await pool.query(`ALTER TABLE inspections ADD COLUMN IF NOT EXISTS template_id INTEGER REFERENCES checklist_templates(id) ON DELETE SET NULL`);
   await pool.query(`ALTER TABLE checklist_templates ADD COLUMN IF NOT EXISTS inspection_type TEXT DEFAULT null`);
+  await pool.query(`ALTER TABLE checklist_items ADD COLUMN IF NOT EXISTS section_name TEXT DEFAULT 'عام'`);
+  await pool.query(`UPDATE checklist_items SET section_name='عام' WHERE section_name IS NULL`);
+  await pool.query(`ALTER TABLE inspection_items ADD COLUMN IF NOT EXISTS section_name TEXT DEFAULT 'عام'`);
+  await pool.query(`UPDATE inspection_items SET section_name='عام' WHERE section_name IS NULL`);
 
   // Seed if empty
   const { rows: uRows } = await pool.query('SELECT COUNT(*) FROM users');
@@ -585,8 +591,8 @@ app.post('/api/inspections', requireAuthAPI, async (req, res) => {
       );
       for (const item of items) {
         await pool.query(
-          "INSERT INTO inspection_items(inspection_id,item_text,gahar_ref) VALUES($1,$2,$3)",
-          [insp.id, item.text, item.gahar_ref]
+          "INSERT INTO inspection_items(inspection_id,item_text,gahar_ref,section_name) VALUES($1,$2,$3,$4)",
+          [insp.id, item.text, item.gahar_ref, item.section_name || 'عام']
         );
       }
     }
@@ -630,8 +636,8 @@ app.put('/api/inspections/:id', requireAuthAPI, async (req, res) => {
       );
       for (const item of tmplItems) {
         await pool.query(
-          "INSERT INTO inspection_items(inspection_id,item_text,gahar_ref) VALUES($1,$2,$3)",
-          [req.params.id, item.text, item.gahar_ref]
+          "INSERT INTO inspection_items(inspection_id,item_text,gahar_ref,section_name) VALUES($1,$2,$3,$4)",
+          [req.params.id, item.text, item.gahar_ref, item.section_name || 'عام']
         );
       }
     }
@@ -788,12 +794,13 @@ app.get('/api/checklists/:id/items', requireAuthAPI, async (req, res) => {
 
 app.post('/api/checklists/:id/items', requireAuthAPI, requireRole('superadmin', 'quality_manager'), async (req, res) => {
   try {
-    const { text, gahar_ref, order_num } = req.body;
-    const { rows: [maxR] } = await pool.query("SELECT COALESCE(MAX(order_num),0) AS mx FROM checklist_items WHERE template_id=$1", [req.params.id]);
+    const { text, gahar_ref, order_num, section_name } = req.body;
+    const sec = section_name || 'عام';
+    const { rows: [maxR] } = await pool.query("SELECT COALESCE(MAX(order_num),0) AS mx FROM checklist_items WHERE template_id=$1 AND section_name=$2", [req.params.id, sec]);
     const ord = order_num || (maxR.mx + 1);
     const { rows: [item] } = await pool.query(
-      "INSERT INTO checklist_items(template_id,text,gahar_ref,order_num) VALUES($1,$2,$3,$4) RETURNING *",
-      [req.params.id, text, gahar_ref || null, ord]
+      "INSERT INTO checklist_items(template_id,text,gahar_ref,order_num,section_name) VALUES($1,$2,$3,$4,$5) RETURNING *",
+      [req.params.id, text, gahar_ref || null, ord, sec]
     );
     res.json(item);
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
@@ -801,13 +808,14 @@ app.post('/api/checklists/:id/items', requireAuthAPI, requireRole('superadmin', 
 
 app.put('/api/checklists/:id/items/:itemId', requireAuthAPI, requireRole('superadmin', 'quality_manager'), async (req, res) => {
   try {
-    const { text, gahar_ref, order_num, active } = req.body;
+    const { text, gahar_ref, order_num, active, section_name } = req.body;
     const fields = [];
     const vals = [];
     if (text !== undefined) { vals.push(text); fields.push(`text=$${vals.length}`); }
     if (gahar_ref !== undefined) { vals.push(gahar_ref); fields.push(`gahar_ref=$${vals.length}`); }
     if (order_num !== undefined) { vals.push(order_num); fields.push(`order_num=$${vals.length}`); }
     if (active !== undefined) { vals.push(active); fields.push(`active=$${vals.length}`); }
+    if (section_name !== undefined) { vals.push(section_name); fields.push(`section_name=$${vals.length}`); }
     vals.push(req.params.itemId);
     const { rows: [item] } = await pool.query(
       `UPDATE checklist_items SET ${fields.join(',')} WHERE id=$${vals.length} RETURNING *`,
@@ -820,6 +828,30 @@ app.put('/api/checklists/:id/items/:itemId', requireAuthAPI, requireRole('supera
 app.delete('/api/checklists/:id/items/:itemId', requireAuthAPI, requireRole('superadmin', 'quality_manager'), async (req, res) => {
   try {
     await pool.query("DELETE FROM checklist_items WHERE id=$1", [req.params.itemId]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: 'خطأ' }); }
+});
+
+app.put('/api/checklists/:id/sections/rename', requireAuthAPI, requireRole('superadmin', 'quality_manager'), async (req, res) => {
+  try {
+    const { old_name, new_name } = req.body;
+    if (!old_name || !new_name) return res.status(400).json({ error: 'اسم المحور مطلوب' });
+    await pool.query(
+      "UPDATE checklist_items SET section_name=$1 WHERE template_id=$2 AND section_name=$3",
+      [new_name, req.params.id, old_name]
+    );
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: 'خطأ' }); }
+});
+
+app.delete('/api/checklists/:id/sections', requireAuthAPI, requireRole('superadmin', 'quality_manager'), async (req, res) => {
+  try {
+    const { section_name } = req.query;
+    if (!section_name) return res.status(400).json({ error: 'اسم المحور مطلوب' });
+    await pool.query(
+      "DELETE FROM checklist_items WHERE template_id=$1 AND section_name=$2",
+      [req.params.id, section_name]
+    );
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });

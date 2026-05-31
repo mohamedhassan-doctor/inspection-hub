@@ -107,6 +107,10 @@
         </div>
       </div>
       <div class="form-group">
+        <label class="form-label">المحور</label>
+        <input type="text" id="item-section" class="form-control" placeholder="عام" value="عام">
+      </div>
+      <div class="form-group">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
           <input type="checkbox" id="item-active" checked> مفعّل
         </label>
@@ -123,6 +127,8 @@
 <script src="/js/shared.js"></script>
 <script>
 let depts = [], checklists = [];
+let templateItemsCache = {};
+let pendingSections = {};
 
 async function loadInit() {
   depts = await api('GET', '/api/departments');
@@ -132,6 +138,15 @@ async function loadInit() {
     o.value = d.id; o.textContent = d.name;
     sel.appendChild(o);
   });
+}
+
+function getSections(tmplId, items) {
+  const fromItems = [...new Set(items.map(i => i.section_name || 'عام'))];
+  const pending = [...(pendingSections[tmplId] || new Set())];
+  const all = [...new Set([...fromItems, ...pending])];
+  const idx = all.indexOf('عام');
+  if (idx > 0) { all.splice(idx, 1); all.unshift('عام'); }
+  return all;
 }
 
 function renderChecklistCard(t) {
@@ -151,13 +166,10 @@ function renderChecklistCard(t) {
           <button class="btn btn-danger btn-sm btn-icon" onclick="deleteTemplate(${t.id})" title="حذف"><i class="fas fa-trash"></i></button>
         </div>
       </div>
-      <div class="card-body" style="padding:12px 16px" id="items-${t.id}">
+      <div class="card-body" style="padding:0" id="items-${t.id}">
         <div style="text-align:center;color:#94a3b8;padding:20px">
-          <button class="btn btn-secondary btn-sm" onclick="loadItems(${t.id})"><i class="fas fa-expand"></i> عرض البنود</button>
+          <button class="btn btn-secondary btn-sm" onclick="loadItems(${t.id})"><i class="fas fa-expand"></i> عرض البنود والمحاور</button>
         </div>
-      </div>
-      <div style="padding:12px 16px;border-top:1px solid #f1f5f9">
-        <button class="btn btn-primary btn-sm" onclick="openAddItem(${t.id})"><i class="fas fa-plus"></i> إضافة بند</button>
       </div>
     </div>
   `;
@@ -191,22 +203,157 @@ async function loadChecklists() {
 async function loadItems(tmplId) {
   try {
     const items = await api('GET', `/api/checklists/${tmplId}/items`);
-    const el = document.getElementById(`items-${tmplId}`);
-    if (!items.length) { el.innerHTML = '<div style="text-align:center;color:#94a3b8;padding:16px">لا توجد بنود بعد</div>'; return; }
-    el.innerHTML = items.map(item => `
-      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9">
-        <span style="color:#94a3b8;font-size:12px;min-width:20px">${item.order_num}</span>
-        <div style="flex:1">
-          <div style="font-size:14px;${!item.active?'opacity:0.5;text-decoration:line-through':''}">${item.text}</div>
-          ${item.gahar_ref?`<span style="font-size:11px;color:#0e7490">GAHAR: ${item.gahar_ref}</span>`:''}
-        </div>
-        <button class="btn btn-secondary btn-sm btn-icon" onclick="editItem(${tmplId},${item.id})" title="تعديل"><i class="fas fa-edit"></i></button>
-        <button class="btn btn-${item.active?'warning':'success'} btn-sm btn-icon" onclick="toggleItem(${tmplId},${item.id},${!item.active})" title="${item.active?'تعطيل':'تفعيل'}">
-          <i class="fas fa-${item.active?'eye-slash':'eye'}"></i>
-        </button>
-        <button class="btn btn-danger btn-sm btn-icon" onclick="deleteItem(${tmplId},${item.id})" title="حذف"><i class="fas fa-trash"></i></button>
+    templateItemsCache[tmplId] = items;
+    renderTemplateItems(tmplId);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function renderTemplateItems(tmplId) {
+  const el = document.getElementById(`items-${tmplId}`);
+  if (!el) return;
+  const items = templateItemsCache[tmplId] || [];
+  const sections = getSections(tmplId, items);
+
+  let html = `<div style="display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid #e2e8f0;background:#f8fafc">
+    <input type="text" id="sec-input-${tmplId}" class="form-control" placeholder="اسم المحور الجديد..." style="flex:1;height:34px;font-size:13px">
+    <button class="btn btn-secondary btn-sm" onclick="addSection(${tmplId})"><i class="fas fa-plus"></i> إضافة محور</button>
+  </div>`;
+
+  if (!sections.length) {
+    html += `<div style="text-align:center;color:#94a3b8;padding:16px;font-size:13px">أضف محوراً لتبدأ في إضافة البنود</div>`;
+    el.innerHTML = html;
+    return;
+  }
+
+  sections.forEach(secName => {
+    const secItems = items.filter(i => (i.section_name || 'عام') === secName)
+      .sort((a, b) => a.order_num - b.order_num);
+    const safe = secName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    html += `<div style="margin:12px 16px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+      <div style="background:#f1f5f9;padding:8px 12px;display:flex;align-items:center;gap:8px">
+        <i class="fas fa-layer-group" style="color:#0e7490"></i>
+        <span style="font-weight:600;color:#0e7490;flex:1">${secName}</span>
+        <span style="font-size:12px;color:#64748b">${secItems.length} بنود</span>
+        <button class="btn btn-secondary btn-sm btn-icon" onclick="promptRenameSection(${tmplId},'${safe}')" title="تعديل الاسم"><i class="fas fa-edit"></i></button>
+        <button class="btn btn-primary btn-sm" onclick="openAddItemInSection(${tmplId},'${safe}')"><i class="fas fa-plus"></i> بند</button>
+        <button class="btn btn-danger btn-sm btn-icon" onclick="deleteSection(${tmplId},'${safe}')" title="حذف المحور"><i class="fas fa-trash"></i></button>
       </div>
-    `).join('') + `<div style="text-align:center;padding-top:8px;color:#64748b;font-size:13px">${items.length} بند إجمالاً</div>`;
+      <div style="padding:4px 12px">`;
+    if (!secItems.length) {
+      html += `<div style="text-align:center;color:#94a3b8;padding:10px;font-size:13px">لا توجد بنود — اضغط "+ بند" للإضافة</div>`;
+    } else {
+      secItems.forEach((item, idx) => {
+        html += `<div style="display:flex;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid #f1f5f9">
+          <div style="display:flex;flex-direction:column;gap:1px">
+            <button class="btn btn-secondary btn-sm btn-icon" style="padding:1px 5px;font-size:10px" ${idx===0?'disabled':''} onclick="moveItemUp(${tmplId},${item.id})"><i class="fas fa-chevron-up"></i></button>
+            <button class="btn btn-secondary btn-sm btn-icon" style="padding:1px 5px;font-size:10px" ${idx===secItems.length-1?'disabled':''} onclick="moveItemDown(${tmplId},${item.id})"><i class="fas fa-chevron-down"></i></button>
+          </div>
+          <div style="flex:1">
+            <div style="font-size:14px;${!item.active?'opacity:0.5;text-decoration:line-through':''}">${item.text}</div>
+            ${item.gahar_ref?`<span style="font-size:11px;color:#0e7490">GAHAR: ${item.gahar_ref}</span>`:''}
+          </div>
+          <button class="btn btn-secondary btn-sm btn-icon" onclick="editItem(${tmplId},${item.id})" title="تعديل"><i class="fas fa-edit"></i></button>
+          <button class="btn btn-${item.active?'warning':'success'} btn-sm btn-icon" onclick="toggleItem(${tmplId},${item.id},${!item.active})" title="${item.active?'تعطيل':'تفعيل'}"><i class="fas fa-${item.active?'eye-slash':'eye'}"></i></button>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteItem(${tmplId},${item.id})" title="حذف"><i class="fas fa-trash"></i></button>
+        </div>`;
+      });
+    }
+    html += `</div></div>`;
+  });
+
+  html += `<div style="text-align:center;padding:8px;color:#64748b;font-size:12px">${items.length} بند في ${sections.length} محور</div>`;
+  el.innerHTML = html;
+}
+
+function addSection(tmplId) {
+  const input = document.getElementById(`sec-input-${tmplId}`);
+  const name = (input.value || '').trim();
+  if (!name) return showToast('يرجى إدخال اسم المحور', 'warning');
+  const items = templateItemsCache[tmplId] || [];
+  if (getSections(tmplId, items).includes(name)) return showToast('هذا المحور موجود بالفعل', 'warning');
+  if (!pendingSections[tmplId]) pendingSections[tmplId] = new Set();
+  pendingSections[tmplId].add(name);
+  input.value = '';
+  renderTemplateItems(tmplId);
+}
+
+async function promptRenameSection(tmplId, oldName) {
+  const newName = prompt('الاسم الجديد للمحور:', oldName);
+  if (!newName || newName.trim() === oldName) return;
+  try {
+    await api('PUT', `/api/checklists/${tmplId}/sections/rename`, { old_name: oldName, new_name: newName.trim() });
+    if (pendingSections[tmplId]?.has(oldName)) {
+      pendingSections[tmplId].delete(oldName);
+      pendingSections[tmplId].add(newName.trim());
+    }
+    showToast('تم تعديل اسم المحور', 'success');
+    await loadItems(tmplId);
+    loadChecklists();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function deleteSection(tmplId, sectionName) {
+  const items = templateItemsCache[tmplId] || [];
+  const secItems = items.filter(i => (i.section_name || 'عام') === sectionName);
+  if (secItems.length === 0) {
+    pendingSections[tmplId]?.delete(sectionName);
+    renderTemplateItems(tmplId);
+    return;
+  }
+  if (!confirmAction(`هل تريد حذف المحور "${sectionName}" وجميع بنوده (${secItems.length} بند)؟`)) return;
+  try {
+    await api('DELETE', `/api/checklists/${tmplId}/sections?section_name=${encodeURIComponent(sectionName)}`);
+    showToast('تم حذف المحور', 'success');
+    await loadItems(tmplId);
+    loadChecklists();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function openAddItemInSection(tmplId, sectionName) {
+  document.getElementById('item-edit-id').value = '';
+  document.getElementById('item-tmpl-id').value = tmplId;
+  document.getElementById('item-modal-title').textContent = 'إضافة بند';
+  document.getElementById('item-text').value = '';
+  document.getElementById('item-gahar').value = '';
+  document.getElementById('item-order').value = '';
+  document.getElementById('item-active').checked = true;
+  document.getElementById('item-section').value = sectionName;
+  openModal('item-modal');
+}
+
+async function moveItemUp(tmplId, itemId) {
+  const items = templateItemsCache[tmplId] || [];
+  const item = items.find(i => i.id === itemId);
+  if (!item) return;
+  const secItems = items.filter(i => (i.section_name||'عام') === (item.section_name||'عام'))
+    .sort((a, b) => a.order_num - b.order_num);
+  const idx = secItems.findIndex(i => i.id === itemId);
+  if (idx <= 0) return;
+  const prev = secItems[idx - 1];
+  try {
+    await Promise.all([
+      api('PUT', `/api/checklists/${tmplId}/items/${itemId}`, { order_num: prev.order_num }),
+      api('PUT', `/api/checklists/${tmplId}/items/${prev.id}`, { order_num: item.order_num }),
+    ]);
+    await loadItems(tmplId);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function moveItemDown(tmplId, itemId) {
+  const items = templateItemsCache[tmplId] || [];
+  const item = items.find(i => i.id === itemId);
+  if (!item) return;
+  const secItems = items.filter(i => (i.section_name||'عام') === (item.section_name||'عام'))
+    .sort((a, b) => a.order_num - b.order_num);
+  const idx = secItems.findIndex(i => i.id === itemId);
+  if (idx >= secItems.length - 1) return;
+  const next = secItems[idx + 1];
+  try {
+    await Promise.all([
+      api('PUT', `/api/checklists/${tmplId}/items/${itemId}`, { order_num: next.order_num }),
+      api('PUT', `/api/checklists/${tmplId}/items/${next.id}`, { order_num: item.order_num }),
+    ]);
+    await loadItems(tmplId);
   } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -276,12 +423,13 @@ function openAddItem(tmplId) {
   document.getElementById('item-gahar').value = '';
   document.getElementById('item-order').value = '';
   document.getElementById('item-active').checked = true;
+  document.getElementById('item-section').value = 'عام';
   openModal('item-modal');
 }
 
 async function editItem(tmplId, itemId) {
   try {
-    const items = await api('GET', `/api/checklists/${tmplId}/items`);
+    const items = templateItemsCache[tmplId] || await api('GET', `/api/checklists/${tmplId}/items`);
     const item = items.find(i => i.id === itemId);
     if (!item) return;
     document.getElementById('item-edit-id').value = itemId;
@@ -291,6 +439,7 @@ async function editItem(tmplId, itemId) {
     document.getElementById('item-gahar').value = item.gahar_ref || '';
     document.getElementById('item-order').value = item.order_num || '';
     document.getElementById('item-active').checked = item.active;
+    document.getElementById('item-section').value = item.section_name || 'عام';
     openModal('item-modal');
   } catch (e) { showToast(e.message, 'error'); }
 }
@@ -303,13 +452,14 @@ async function saveItem() {
     gahar_ref: document.getElementById('item-gahar').value.trim() || null,
     order_num: parseInt(document.getElementById('item-order').value) || null,
     active: document.getElementById('item-active').checked,
+    section_name: document.getElementById('item-section').value.trim() || 'عام',
   };
   if (!body.text) return showToast('يرجى إدخال نص البند', 'warning');
   try {
     if (id) { await api('PUT', `/api/checklists/${tmplId}/items/${id}`, body); showToast('تم التحديث', 'success'); }
     else { await api('POST', `/api/checklists/${tmplId}/items`, body); showToast('تم الإضافة', 'success'); }
     closeModal('item-modal');
-    loadItems(parseInt(tmplId));
+    await loadItems(parseInt(tmplId));
     loadChecklists();
   } catch (e) { showToast(e.message, 'error'); }
 }
@@ -318,7 +468,7 @@ async function toggleItem(tmplId, itemId, newActive) {
   try {
     await api('PUT', `/api/checklists/${tmplId}/items/${itemId}`, { active: newActive });
     showToast(newActive ? 'تم التفعيل' : 'تم التعطيل', 'success');
-    loadItems(tmplId);
+    await loadItems(tmplId);
   } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -327,7 +477,7 @@ async function deleteItem(tmplId, itemId) {
   try {
     await api('DELETE', `/api/checklists/${tmplId}/items/${itemId}`);
     showToast('تم الحذف', 'success');
-    loadItems(tmplId);
+    await loadItems(tmplId);
     loadChecklists();
   } catch (e) { showToast(e.message, 'error'); }
 }

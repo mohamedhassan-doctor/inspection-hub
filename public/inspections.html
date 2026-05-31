@@ -456,32 +456,79 @@ function renderExecItems(items) {
   const empty = document.getElementById('exec-empty');
   if (!items.length) { list.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
-  list.innerHTML = items.map((item, idx) => {
-    const resultClass = item.result ? `result-${item.result}` : '';
-    return `<div class="inspection-item-row ${resultClass}" id="item-row-${item.id}">
-      <div class="item-header">
-        <div>
-          <div style="font-size:12px;color:#94a3b8;margin-bottom:4px">البند ${idx+1}</div>
-          <div class="item-text">${item.item_text}</div>
+
+  const sections = {};
+  const sectionOrder = [];
+  items.forEach(item => {
+    const sec = item.section_name || 'عام';
+    if (!sections[sec]) { sections[sec] = []; sectionOrder.push(sec); }
+    sections[sec].push(item);
+  });
+
+  let globalIdx = 0;
+  list.innerHTML = sectionOrder.map(secName => {
+    const secItems = sections[secName];
+    const applicable = secItems.filter(i => i.result && i.result !== 'not_applicable');
+    const compliant = secItems.filter(i => i.result === 'compliant').length;
+    const pct = applicable.length ? Math.round((compliant / applicable.length) * 100) : null;
+    const pctText = pct !== null ? `${pct}%` : '—';
+    const pctColor = pct === null ? '#94a3b8' : pct >= 85 ? '#16a34a' : pct >= 70 ? '#d97706' : '#dc2626';
+
+    const itemsHtml = secItems.map(item => {
+      globalIdx++;
+      const resultClass = item.result ? `result-${item.result}` : '';
+      return `<div class="inspection-item-row ${resultClass}" id="item-row-${item.id}">
+        <div class="item-header">
+          <div>
+            <div style="font-size:12px;color:#94a3b8;margin-bottom:4px">البند ${globalIdx}</div>
+            <div class="item-text">${item.item_text}</div>
+          </div>
+          ${item.gahar_ref ? `<span class="item-gahar">GAHAR: ${item.gahar_ref}</span>` : ''}
         </div>
-        ${item.gahar_ref ? `<span class="item-gahar">GAHAR: ${item.gahar_ref}</span>` : ''}
-      </div>
-      <div class="item-actions">
-        <div class="result-btn-group">
-          <button class="result-btn ${item.result==='compliant'?'active-compliant':''}" onclick="setResult(${item.id},'compliant',this)">✓ مطابق</button>
-          <button class="result-btn ${item.result==='non_compliant'?'active-non_compliant':''}" onclick="setResult(${item.id},'non_compliant',this)">✗ غير مطابق</button>
-          <button class="result-btn ${item.result==='needs_improvement'?'active-needs_improvement':''}" onclick="setResult(${item.id},'needs_improvement',this)">~ يحتاج تحسين</button>
-          <button class="result-btn ${item.result==='not_applicable'?'active-not_applicable':''}" onclick="setResult(${item.id},'not_applicable',this)">— غير قابل للتطبيق</button>
+        <div class="item-actions">
+          <div class="result-btn-group">
+            <button class="result-btn ${item.result==='compliant'?'active-compliant':''}" onclick="setResult(${item.id},'compliant',this)">✓ مطابق</button>
+            <button class="result-btn ${item.result==='non_compliant'?'active-non_compliant':''}" onclick="setResult(${item.id},'non_compliant',this)">✗ غير مطابق</button>
+            <button class="result-btn ${item.result==='needs_improvement'?'active-needs_improvement':''}" onclick="setResult(${item.id},'needs_improvement',this)">~ يحتاج تحسين</button>
+            <button class="result-btn ${item.result==='not_applicable'?'active-not_applicable':''}" onclick="setResult(${item.id},'not_applicable',this)">— غير قابل للتطبيق</button>
+          </div>
+          <input type="text" class="form-control item-notes" id="notes-${item.id}" placeholder="ملاحظات..." value="${item.notes||''}" onblur="saveNotes(${item.id},this.value)" style="flex:1;min-width:200px">
         </div>
-        <input type="text" class="form-control item-notes" id="notes-${item.id}" placeholder="ملاحظات..." value="${item.notes||''}" onblur="saveNotes(${item.id},this.value)" style="flex:1;min-width:200px">
+        <div id="finding-section-${item.id}" style="margin-top:10px;display:${item.result==='non_compliant'?'block':'none'}">
+          <button class="btn btn-warning btn-sm" onclick="quickFinding(${item.id},'${item.item_text.replace(/'/g,"\\'")}')">
+            <i class="fas fa-exclamation-triangle"></i> إنشاء مخالفة
+          </button>
+        </div>
+      </div>`;
+    }).join('');
+
+    return `<div style="margin-bottom:16px">
+      <div style="background:#f1f5f9;padding:8px 16px;display:flex;align-items:center;gap:8px;border-radius:8px 8px 0 0;border:1px solid #e2e8f0;border-bottom:none">
+        <i class="fas fa-layer-group" style="color:#0e7490"></i>
+        <span style="font-weight:700;color:#0e7490;flex:1">${secName}</span>
+        <span data-sec-stat="${secName}" style="font-size:13px;font-weight:600;color:${pctColor}">${pctText}</span>
       </div>
-      <div id="finding-section-${item.id}" style="margin-top:10px;display:${item.result==='non_compliant'?'block':'none'}">
-        <button class="btn btn-warning btn-sm" onclick="quickFinding(${item.id},'${item.item_text.replace(/'/g,'\\\'')}')" style="font-size:12px">
-          <i class="fas fa-exclamation-triangle"></i> إنشاء مخالفة
-        </button>
-      </div>
+      <div style="border:1px solid #e2e8f0;border-radius:0 0 8px 8px;overflow:hidden">${itemsHtml}</div>
     </div>`;
   }).join('');
+}
+
+function updateSectionStats(items) {
+  const sections = {};
+  items.forEach(item => {
+    const sec = item.section_name || 'عام';
+    if (!sections[sec]) sections[sec] = [];
+    sections[sec].push(item);
+  });
+  document.querySelectorAll('[data-sec-stat]').forEach(el => {
+    const secName = el.dataset.secStat;
+    const secItems = sections[secName] || [];
+    const applicable = secItems.filter(i => i.result && i.result !== 'not_applicable');
+    const compliant = secItems.filter(i => i.result === 'compliant').length;
+    const pct = applicable.length ? Math.round((compliant / applicable.length) * 100) : null;
+    el.textContent = pct !== null ? `${pct}%` : '—';
+    el.style.color = pct === null ? '#94a3b8' : pct >= 85 ? '#16a34a' : pct >= 70 ? '#d97706' : '#dc2626';
+  });
 }
 
 function updateExecProgress(items) {
@@ -504,9 +551,9 @@ async function setResult(itemId, result, btn) {
     // Show/hide finding section
     const fs = document.getElementById(`finding-section-${itemId}`);
     if (fs) fs.style.display = result === 'non_compliant' ? 'block' : 'none';
-    // Refresh progress
     const items = await api('GET', `/api/inspections/${currentExecId}/items`);
     updateExecProgress(items);
+    updateSectionStats(items);
   } catch (e) { showToast(e.message, 'error'); }
 }
 
@@ -556,16 +603,44 @@ async function openReport(id) {
     const { inspection: i, items, findings } = d;
     const sl = statusLabels[i.status] || { text: i.status, cls: 'badge-secondary' };
     const pct = i.compliance_score != null ? i.compliance_score : 0;
-    const itemsHtml = items.map((item, idx) => {
-      const rl = resultLabels[item.result] || { text: item.result || '—', cls: 'badge-secondary' };
-      return `<tr>
-        <td>${idx+1}</td>
-        <td>${item.item_text}</td>
-        <td>${item.gahar_ref||'—'}</td>
-        <td><span class="badge ${rl.cls}">${rl.text}</span></td>
-        <td>${item.notes||'—'}</td>
-      </tr>`;
+
+    const rptSections = {};
+    const rptOrder = [];
+    items.forEach(item => {
+      const sec = item.section_name || 'عام';
+      if (!rptSections[sec]) { rptSections[sec] = []; rptOrder.push(sec); }
+      rptSections[sec].push(item);
+    });
+
+    const calcPct = arr => {
+      const app = arr.filter(x => x.result && x.result !== 'not_applicable');
+      const comp = arr.filter(x => x.result === 'compliant').length;
+      return app.length ? Math.round((comp / app.length) * 100) : null;
+    };
+
+    const itemsHtml = rptOrder.map(secName => {
+      const secItems = rptSections[secName];
+      const sp = calcPct(secItems);
+      const spTxt = sp !== null ? `${sp}%` : '—';
+      const isLow = sp !== null && sp < 80;
+      const spColor = sp === null ? '#94a3b8' : sp >= 85 ? '#16a34a' : sp >= 70 ? '#d97706' : '#dc2626';
+      const rows = secItems.map((item, idx) => {
+        const rl = resultLabels[item.result] || { text: item.result || '—', cls: 'badge-secondary' };
+        return `<tr><td>${idx+1}</td><td>${item.item_text}</td><td>${item.gahar_ref||'—'}</td><td><span class="badge ${rl.cls}">${rl.text}</span></td><td>${item.notes||'—'}</td></tr>`;
+      }).join('');
+      return `<div style="margin-bottom:16px">
+        <div style="background:${isLow?'#fef2f2':'#f1f5f9'};padding:8px 12px;border-radius:8px 8px 0 0;border:1px solid ${isLow?'#fca5a5':'#e2e8f0'};display:flex;align-items:center;gap:8px">
+          <i class="fas fa-layer-group" style="color:${isLow?'#dc2626':'#0e7490'}"></i>
+          <span style="font-weight:700;color:${isLow?'#dc2626':'#0e7490'};flex:1">${secName}</span>
+          <span style="font-size:13px;font-weight:600;color:${spColor}">${spTxt}</span>
+          ${isLow?'<span style="font-size:11px;color:#dc2626">⚠ دون 80%</span>':''}
+        </div>
+        <div class="table-wrapper" style="margin:0">
+          <table><thead><tr><th>#</th><th>البند</th><th>GAHAR</th><th>النتيجة</th><th>ملاحظات</th></tr></thead><tbody>${rows}</tbody></table>
+        </div>
+      </div>`;
     }).join('');
+
     const findingsHtml = findings.length ? findings.map(f => {
       const sl2 = sevLabels[f.severity]||{text:f.severity,cls:'badge badge-secondary'};
       return `<tr><td><span class="${sl2.cls}">${sl2.text}</span></td><td>${f.description}</td></tr>`;
@@ -583,25 +658,17 @@ async function openReport(id) {
         </div>
         <div style="margin-top:16px;text-align:center">
           <div style="font-size:36px;font-weight:700;color:${pct>=85?'#16a34a':pct>=70?'#d97706':'#dc2626'}">${pct}%</div>
-          <div style="color:#64748b">نسبة المطابقة</div>
+          <div style="color:#64748b">نسبة المطابقة الإجمالية</div>
           <div class="progress-bar-wrap" style="max-width:300px;margin:8px auto 0">
             <div class="progress-bar ${complianceColor(pct)}" style="width:${pct}%"></div>
           </div>
         </div>
       </div>
-      <h4 style="margin-bottom:12px">بنود الجولة</h4>
-      <div class="table-wrapper">
-        <table>
-          <thead><tr><th>#</th><th>البند</th><th>GAHAR</th><th>النتيجة</th><th>ملاحظات</th></tr></thead>
-          <tbody>${itemsHtml}</tbody>
-        </table>
-      </div>
+      <h4 style="margin-bottom:12px">بنود الجولة حسب المحاور</h4>
+      ${itemsHtml}
       <h4 style="margin:20px 0 12px">المخالفات المرصودة</h4>
       <div class="table-wrapper">
-        <table>
-          <thead><tr><th>الخطورة</th><th>الوصف</th></tr></thead>
-          <tbody>${findingsHtml}</tbody>
-        </table>
+        <table><thead><tr><th>الخطورة</th><th>الوصف</th></tr></thead><tbody>${findingsHtml}</tbody></table>
       </div>
     `;
     openModal('report-modal');
