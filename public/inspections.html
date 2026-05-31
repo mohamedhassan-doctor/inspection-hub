@@ -343,11 +343,13 @@ async function editInspection(id) {
     document.getElementById('f-date').value = insp.scheduled_date ? insp.scheduled_date.slice(0,10) : '';
     populateDeptSel(insp.dept_id);
     populateInspectorSel(insp.inspector_id);
-    populateTemplateSel(insp.dept_id);
+    // Show ALL templates (same as new inspection form) and pre-select saved template
+    populateTemplateSel(null);
+    if (insp.template_id) document.getElementById('f-template').value = insp.template_id;
+    document.getElementById('template-group').style.display = '';
     const deptSel = document.getElementById('f-dept-sel');
     deptSel.disabled = false;
     deptSel.style.opacity = '';
-    document.getElementById('template-group').style.display = 'none';
     openModal('insp-modal');
   } catch (e) { showToast(e.message, 'error'); }
 }

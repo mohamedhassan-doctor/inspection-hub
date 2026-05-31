@@ -187,6 +187,7 @@ async function initDB() {
   // Migrations for existing databases
   await pool.query(`ALTER TABLE checklist_templates ADD COLUMN IF NOT EXISTS is_global BOOLEAN DEFAULT false`);
   await pool.query(`UPDATE checklist_templates SET is_global=true, dept_id=null WHERE name='قائمة تدقيق مكافحة العدوى' AND is_global=false`);
+  await pool.query(`ALTER TABLE inspections ADD COLUMN IF NOT EXISTS template_id INTEGER REFERENCES checklist_templates(id) ON DELETE SET NULL`);
 
   // Seed if empty
   const { rows: uRows } = await pool.query('SELECT COUNT(*) FROM users');
@@ -468,8 +469,8 @@ app.post('/api/inspections', requireAuthAPI, async (req, res) => {
       if (tmpl && !tmpl.is_global) dept_id = tmpl.dept_id;
     }
     const { rows: [insp] } = await pool.query(
-      "INSERT INTO inspections(title,type,dept_id,inspector_id,scheduled_date,status) VALUES($1,$2,$3,$4,$5,'scheduled') RETURNING *",
-      [title, type, dept_id || null, inspector_id || req.session.userId, scheduled_date]
+      "INSERT INTO inspections(title,type,dept_id,inspector_id,scheduled_date,status,template_id) VALUES($1,$2,$3,$4,$5,'scheduled',$6) RETURNING *",
+      [title, type, dept_id || null, inspector_id || req.session.userId, scheduled_date, template_id || null]
     );
     if (template_id) {
       const { rows: items } = await pool.query(
@@ -501,13 +502,36 @@ app.get('/api/inspections/:id', requireAuthAPI, async (req, res) => {
 
 app.put('/api/inspections/:id', requireAuthAPI, async (req, res) => {
   try {
-    const { title, type, dept_id, inspector_id, scheduled_date, status } = req.body;
-    const { rows: [insp] } = await pool.query(
-      "UPDATE inspections SET title=$1,type=$2,dept_id=$3,inspector_id=$4,scheduled_date=$5,status=$6 WHERE id=$7 RETURNING *",
-      [title, type, dept_id, inspector_id, scheduled_date, status, req.params.id]
+    const { title, type, dept_id, inspector_id, scheduled_date, status, template_id } = req.body;
+
+    // Fetch current template_id before updating so we can detect a change
+    const { rows: [current] } = await pool.query(
+      "SELECT template_id, status AS cur_status FROM inspections WHERE id=$1", [req.params.id]
     );
+
+    const { rows: [insp] } = await pool.query(
+      "UPDATE inspections SET title=$1,type=$2,dept_id=$3,inspector_id=$4,scheduled_date=$5,status=$6,template_id=$7 WHERE id=$8 RETURNING *",
+      [title, type, dept_id, inspector_id, scheduled_date, status, template_id || null, req.params.id]
+    );
+
+    // Replace inspection_items only when template actually changed on a scheduled inspection
+    const templateChanged = template_id && current && String(template_id) !== String(current.template_id);
+    if (templateChanged && current.cur_status === 'scheduled') {
+      await pool.query("DELETE FROM inspection_items WHERE inspection_id=$1", [req.params.id]);
+      const { rows: tmplItems } = await pool.query(
+        "SELECT * FROM checklist_items WHERE template_id=$1 AND active=true ORDER BY order_num",
+        [template_id]
+      );
+      for (const item of tmplItems) {
+        await pool.query(
+          "INSERT INTO inspection_items(inspection_id,item_text,gahar_ref) VALUES($1,$2,$3)",
+          [req.params.id, item.text, item.gahar_ref]
+        );
+      }
+    }
+
     res.json(insp);
-  } catch (e) { res.status(500).json({ error: 'خطأ' }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
 });
 
 app.delete('/api/inspections/:id', requireAuthAPI, requireRole('superadmin', 'quality_manager'), async (req, res) => {
