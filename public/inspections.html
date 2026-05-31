@@ -82,6 +82,7 @@
     </div>
     <div class="modal-body">
       <input type="hidden" id="edit-id">
+      <input type="hidden" id="edit-status">
       <div class="form-row cols-2">
         <div class="form-group" style="grid-column:1/-1">
           <label class="form-label">عنوان الجولة *</label>
@@ -118,6 +119,17 @@
             <option value="">— بدون قائمة —</option>
           </select>
         </div>
+      </div>
+      <!-- Items section — only shown when editing an existing inspection -->
+      <div id="edit-items-wrap" style="display:none;margin-top:16px;border-top:2px solid #e2e8f0;padding-top:14px">
+        <div style="font-weight:600;color:#1e293b;margin-bottom:10px;font-size:14px">
+          <i class="fas fa-list-check" style="color:#0e7490"></i> بنود قائمة التدقيق
+        </div>
+        <div id="edit-items-loading" style="text-align:center;padding:24px;color:#64748b">
+          <i class="fas fa-spinner fa-spin fa-lg"></i>
+          <div style="margin-top:8px;font-size:13px">جاري تحميل البنود...</div>
+        </div>
+        <div id="edit-items-list" style="max-height:320px;overflow-y:auto;display:none"></div>
       </div>
     </div>
     <div class="modal-footer">
@@ -242,12 +254,13 @@ function renderTable(rows) {
 
 function openCreateModal() {
   document.getElementById('edit-id').value = '';
+  document.getElementById('edit-status').value = '';
   document.getElementById('modal-title').textContent = 'جولة جديدة';
   document.getElementById('f-title').value = '';
   document.getElementById('f-insp-type').value = 'safety';
   document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
-  // Always show the template group (may have been hidden by editInspection)
   document.getElementById('template-group').style.display = '';
+  document.getElementById('edit-items-wrap').style.display = 'none';
   populateDeptSel();
   populateInspectorSel();
   populateTemplateSel(null);
@@ -334,42 +347,124 @@ function onTemplateChange() {
 }
 
 async function editInspection(id) {
+  // Open modal immediately with spinner — never show stale/empty state
+  document.getElementById('edit-id').value = id;
+  document.getElementById('edit-status').value = '';
+  document.getElementById('modal-title').textContent = 'تعديل الجولة';
+  document.getElementById('f-title').value = '';
+  document.getElementById('f-insp-type').value = 'safety';
+  document.getElementById('f-date').value = '';
+  document.getElementById('template-group').style.display = 'none';
+  document.getElementById('edit-items-wrap').style.display = 'block';
+  document.getElementById('edit-items-loading').style.display = 'block';
+  document.getElementById('edit-items-list').style.display = 'none';
+  document.getElementById('edit-items-list').innerHTML = '';
+  openModal('insp-modal');
+
   try {
-    const insp = await api('GET', `/api/inspections/${id}`);
-    document.getElementById('edit-id').value = id;
-    document.getElementById('modal-title').textContent = 'تعديل الجولة';
+    const [insp, items] = await Promise.all([
+      api('GET', `/api/inspections/${id}`),
+      api('GET', `/api/inspections/${id}/items`),
+    ]);
+
+    // Populate metadata fields
+    document.getElementById('edit-status').value = insp.status;
     document.getElementById('f-title').value = insp.title;
     document.getElementById('f-insp-type').value = insp.type;
-    document.getElementById('f-date').value = insp.scheduled_date ? insp.scheduled_date.slice(0,10) : '';
+    document.getElementById('f-date').value = insp.scheduled_date ? insp.scheduled_date.slice(0, 10) : '';
+
+    // Dept: always pre-fill with saved dept_id; allow change if still scheduled
     populateDeptSel(insp.dept_id);
     populateInspectorSel(insp.inspector_id);
-    populateTemplateSel(insp.dept_id);
     const deptSel = document.getElementById('f-dept-sel');
-    deptSel.disabled = false;
-    deptSel.style.opacity = '';
-    document.getElementById('template-group').style.display = 'none';
-    openModal('insp-modal');
-  } catch (e) { showToast(e.message, 'error'); }
+    deptSel.disabled = insp.status !== 'scheduled';
+    deptSel.style.opacity = insp.status !== 'scheduled' ? '0.7' : '';
+
+    // Render checklist items
+    document.getElementById('edit-items-loading').style.display = 'none';
+    if (items.length) {
+      renderEditItems(items, insp.status);
+      document.getElementById('edit-items-list').style.display = 'block';
+    } else {
+      document.getElementById('edit-items-wrap').style.display = 'none';
+    }
+  } catch (e) {
+    showToast(e.message, 'error');
+    document.getElementById('edit-items-loading').style.display = 'none';
+    document.getElementById('edit-items-wrap').style.display = 'none';
+  }
+}
+
+function renderEditItems(items, status) {
+  const isEditable = status === 'scheduled' || status === 'in_progress';
+  const container = document.getElementById('edit-items-list');
+  container.innerHTML = items.map((item, idx) => {
+    const rl = resultLabels[item.result] || { text: item.result || '—', cls: 'badge-secondary' };
+    const body = isEditable
+      ? `<div class="result-btn-group">
+           <button class="result-btn ${item.result==='compliant'?'active-compliant':''}" onclick="setEditResult(${item.id},'compliant',this)">✓ مطابق</button>
+           <button class="result-btn ${item.result==='non_compliant'?'active-non_compliant':''}" onclick="setEditResult(${item.id},'non_compliant',this)">✗ غير مطابق</button>
+           <button class="result-btn ${item.result==='needs_improvement'?'active-needs_improvement':''}" onclick="setEditResult(${item.id},'needs_improvement',this)">~ يحتاج تحسين</button>
+           <button class="result-btn ${item.result==='not_applicable'?'active-not_applicable':''}" onclick="setEditResult(${item.id},'not_applicable',this)">— لا ينطبق</button>
+         </div>
+         <input type="text" class="form-control" id="edit-notes-${item.id}" value="${(item.notes||'').replace(/"/g,'&quot;')}" placeholder="ملاحظات..." style="margin-top:6px;font-size:13px">`
+      : `<span class="badge ${rl.cls}">${rl.text}</span>${item.notes ? ` — ${item.notes}` : ''}`;
+    return `<div class="inspection-item-row ${item.result?'result-'+item.result:''}" id="edit-item-row-${item.id}" data-item-id="${item.id}">
+      <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">
+        <span style="color:#94a3b8;font-size:12px;min-width:22px;padding-top:2px">${idx+1}</span>
+        <div style="flex:1">
+          <div style="font-size:14px;line-height:1.4">${item.item_text}</div>
+          ${item.gahar_ref?`<span style="font-size:11px;color:#0e7490">GAHAR: ${item.gahar_ref}</span>`:''}
+        </div>
+      </div>
+      <div style="padding-right:30px">${body}</div>
+    </div>`;
+  }).join('');
+}
+
+function setEditResult(itemId, result, btn) {
+  const row = document.getElementById(`edit-item-row-${itemId}`);
+  row.className = `inspection-item-row result-${result}`;
+  row.querySelectorAll('.result-btn').forEach(b => b.className = 'result-btn');
+  btn.classList.add(`active-${result}`);
 }
 
 async function saveInspection() {
   const id = document.getElementById('edit-id').value;
   const templateSel = document.getElementById('f-template');
   const templateOpt = templateSel.options[templateSel.selectedIndex];
-  const isGlobalTemplate = templateSel.value && templateOpt.dataset.isGlobal === '1';
+  const isGlobalTemplate = !id && templateSel.value && templateOpt && templateOpt.dataset.isGlobal === '1';
+
   const body = {
     title: document.getElementById('f-title').value.trim(),
     type: document.getElementById('f-insp-type').value,
     dept_id: document.getElementById('f-dept-sel').value || null,
     inspector_id: document.getElementById('f-inspector').value || null,
     scheduled_date: document.getElementById('f-date').value,
-    template_id: templateSel.value || null,
   };
+
   if (!body.title || !body.scheduled_date) return showToast('يرجى ملء الحقول المطلوبة', 'warning');
   if (isGlobalTemplate && !body.dept_id) return showToast('يرجى اختيار القسم لهذه القائمة العامة', 'warning');
+
+  if (id) {
+    // Edit: preserve current status, collect item results/notes
+    body.status = document.getElementById('edit-status').value || undefined;
+    const items = [];
+    document.querySelectorAll('#edit-items-list [data-item-id]').forEach(row => {
+      const itemId = parseInt(row.dataset.itemId);
+      const activeBtn = row.querySelector('.result-btn[class*="active-"]');
+      const result = activeBtn ? (activeBtn.className.match(/active-(\S+)/)?.[1] || null) : null;
+      const notesEl = document.getElementById(`edit-notes-${itemId}`);
+      items.push({ id: itemId, result, notes: notesEl ? notesEl.value.trim() : '' });
+    });
+    if (items.length) body.items = items;
+  } else {
+    // Create: send template_id so server saves it
+    body.template_id = templateSel.value || null;
+  }
+
   try {
     if (id) {
-      body.status = 'scheduled';
       await api('PUT', `/api/inspections/${id}`, body);
       showToast('تم تحديث الجولة', 'success');
     } else {
