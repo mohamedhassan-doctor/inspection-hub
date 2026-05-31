@@ -37,14 +37,17 @@
       <select id="f-dept" class="form-control" onchange="loadInspections()"><option value="">كل الأقسام</option></select>
       <select id="f-type" class="form-control" onchange="loadInspections()">
         <option value="">كل الأنواع</option>
-        <option value="safety">السلامة العامة</option>
+        <option value="environmental_safety">السلامة البيئية</option>
+        <option value="patient_safety">سلامة المريض</option>
         <option value="infection_control">مكافحة العدوى</option>
         <option value="fire_safety">سلامة الحريق</option>
-        <option value="cleanliness">النظافة</option>
         <option value="medication">الأدوية</option>
-        <option value="patient_files">ملفات المرضى</option>
-        <option value="equipment">المعدات</option>
-        <option value="gahar_prep">تحضير GAHAR</option>
+        <option value="medical_equipment">المعدات الطبية</option>
+        <option value="facilities_infrastructure">المرافق والبنية التحتية</option>
+        <option value="radiation_safety">السلامة الإشعاعية</option>
+        <option value="lab_safety">سلامة المعمل</option>
+        <option value="surgical_safety">السلامة الجراحية</option>
+        <option value="comprehensive_multidisciplinary">جولة شاملة متعددة التخصصات</option>
       </select>
       <select id="f-status" class="form-control" onchange="loadInspections()">
         <option value="">كل الحالات</option>
@@ -91,14 +94,17 @@
         <div class="form-group">
           <label class="form-label">نوع الجولة *</label>
           <select id="f-insp-type" class="form-control">
-            <option value="safety">السلامة العامة</option>
+            <option value="environmental_safety">السلامة البيئية</option>
+            <option value="patient_safety">سلامة المريض</option>
             <option value="infection_control">مكافحة العدوى</option>
             <option value="fire_safety">سلامة الحريق</option>
-            <option value="cleanliness">النظافة</option>
             <option value="medication">الأدوية</option>
-            <option value="patient_files">ملفات المرضى</option>
-            <option value="equipment">المعدات</option>
-            <option value="gahar_prep">تحضير GAHAR</option>
+            <option value="medical_equipment">المعدات الطبية</option>
+            <option value="facilities_infrastructure">المرافق والبنية التحتية</option>
+            <option value="radiation_safety">السلامة الإشعاعية</option>
+            <option value="lab_safety">سلامة المعمل</option>
+            <option value="surgical_safety">السلامة الجراحية</option>
+            <option value="comprehensive_multidisciplinary">جولة شاملة متعددة التخصصات</option>
           </select>
         </div>
         <div class="form-group">
@@ -245,7 +251,7 @@ function openCreateModal() {
   document.getElementById('edit-id').value = '';
   document.getElementById('modal-title').textContent = 'جولة جديدة';
   document.getElementById('f-title').value = '';
-  document.getElementById('f-insp-type').value = 'safety';
+  document.getElementById('f-insp-type').value = 'environmental_safety';
   document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
   // Always show the template group (may have been hidden by editInspection)
   document.getElementById('template-group').style.display = '';

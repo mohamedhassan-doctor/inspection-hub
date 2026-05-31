@@ -82,14 +82,17 @@ function fmtDate(d) {
 
 // ── Inspection type labels ──
 const inspTypeLabels = {
-  safety: 'السلامة العامة',
+  environmental_safety: 'السلامة البيئية',
+  patient_safety: 'سلامة المريض',
   infection_control: 'مكافحة العدوى',
   fire_safety: 'سلامة الحريق',
-  cleanliness: 'النظافة',
   medication: 'الأدوية',
-  patient_files: 'ملفات المرضى',
-  equipment: 'المعدات',
-  gahar_prep: 'تحضير GAHAR',
+  medical_equipment: 'المعدات الطبية',
+  facilities_infrastructure: 'المرافق والبنية التحتية',
+  radiation_safety: 'السلامة الإشعاعية',
+  lab_safety: 'سلامة المعمل',
+  surgical_safety: 'السلامة الجراحية',
+  comprehensive_multidisciplinary: 'جولة شاملة متعددة التخصصات',
 };
 
 // ── Status labels ──
