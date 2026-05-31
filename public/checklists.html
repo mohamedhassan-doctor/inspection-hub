@@ -28,7 +28,10 @@
   <main class="main-content">
     <div class="page-header">
       <div class="page-title">قوائم التدقيق <span>إدارة قوالب بنود الفحص لكل قسم</span></div>
-      <button class="btn btn-primary" onclick="openCreateTemplate()"><i class="fas fa-plus"></i> قائمة جديدة</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary" onclick="openImportModal()"><i class="fas fa-file-import"></i> استيراد Excel</button>
+        <button class="btn btn-primary" onclick="openCreateTemplate()"><i class="fas fa-plus"></i> قائمة جديدة</button>
+      </div>
     </div>
 
     <div class="cards-row cols-2" id="checklists-grid" style="align-items:start"></div>
@@ -123,7 +126,76 @@
   </div>
 </div>
 
+<!-- Import Modal -->
+<div class="modal-overlay" id="import-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">استيراد قائمة من Excel / CSV</span>
+      <button class="modal-close" onclick="closeModal('import-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">اسم القائمة *</label>
+        <input type="text" id="imp-name" class="form-control" placeholder="مثال: قائمة تدقيق الطوارئ">
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="imp-is-global" onchange="toggleImportGlobal()"> قائمة عامة (تظهر لجميع الأقسام)
+        </label>
+      </div>
+      <div class="form-group" id="imp-dept-group">
+        <label class="form-label">القسم</label>
+        <select id="imp-dept" class="form-control"><option value="">— اختر القسم —</option></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">نوع الجولة المرتبط</label>
+        <select id="imp-insp-type" class="form-control">
+          <option value="">— غير محدد —</option>
+          <option value="environmental_safety">السلامة البيئية</option>
+          <option value="patient_safety">سلامة المريض</option>
+          <option value="infection_control">مكافحة العدوى</option>
+          <option value="fire_safety">سلامة الحريق</option>
+          <option value="medication">الأدوية</option>
+          <option value="medical_equipment">المعدات الطبية</option>
+          <option value="facilities_infrastructure">المرافق والبنية التحتية</option>
+          <option value="radiation_safety">السلامة الإشعاعية</option>
+          <option value="lab_safety">سلامة المعمل</option>
+          <option value="surgical_safety">السلامة الجراحية</option>
+          <option value="comprehensive_multidisciplinary">جولة شاملة متعددة التخصصات</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">ملف Excel أو CSV *</label>
+        <input type="file" id="imp-file" accept=".xlsx,.csv" class="form-control" onchange="handleImportFile(this)">
+        <div style="margin-top:8px;display:flex;align-items:center;gap:12px">
+          <button class="btn btn-secondary btn-sm" type="button" onclick="downloadSample()">
+            <i class="fas fa-download"></i> تحميل ملف نموذجي
+          </button>
+          <small style="color:#94a3b8;font-size:12px">أعمدة: أ) المحور &nbsp;|&nbsp; ب) البند &nbsp;|&nbsp; ج) GAHAR</small>
+        </div>
+      </div>
+      <div id="imp-preview" style="display:none">
+        <p style="font-size:13px;font-weight:600;color:#475569;margin-bottom:6px">معاينة (أول 5 صفوف):</p>
+        <div class="table-wrapper" style="max-height:180px;overflow-y:auto">
+          <table>
+            <thead><tr><th>المحور</th><th>البند</th><th>مرجع GAHAR</th></tr></thead>
+            <tbody id="imp-preview-body"></tbody>
+          </table>
+        </div>
+        <p id="imp-total-count" style="font-size:12px;color:#64748b;margin-top:6px"></p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('import-modal')">إلغاء</button>
+      <button class="btn btn-primary" id="imp-confirm-btn" onclick="confirmImport()" disabled>
+        <i class="fas fa-file-import"></i> استيراد
+      </button>
+    </div>
+  </div>
+</div>
+
 <div id="toast-container"></div>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="/js/shared.js"></script>
 <script>
 let depts = [], checklists = [];
@@ -480,6 +552,112 @@ async function deleteItem(tmplId, itemId) {
     await loadItems(tmplId);
     loadChecklists();
   } catch (e) { showToast(e.message, 'error'); }
+}
+
+// ── Import ──
+let importParsedFile = null;
+
+function openImportModal() {
+  document.getElementById('imp-name').value = '';
+  document.getElementById('imp-is-global').checked = false;
+  document.getElementById('imp-dept-group').style.display = 'block';
+  document.getElementById('imp-insp-type').value = '';
+  document.getElementById('imp-file').value = '';
+  document.getElementById('imp-preview').style.display = 'none';
+  document.getElementById('imp-confirm-btn').disabled = true;
+  importParsedFile = null;
+  const sel = document.getElementById('imp-dept');
+  if (sel.options.length <= 1) {
+    depts.forEach(d => {
+      const o = document.createElement('option');
+      o.value = d.id; o.textContent = d.name;
+      sel.appendChild(o);
+    });
+  }
+  openModal('import-modal');
+}
+
+function toggleImportGlobal() {
+  document.getElementById('imp-dept-group').style.display =
+    document.getElementById('imp-is-global').checked ? 'none' : 'block';
+}
+
+function handleImportFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext !== 'xlsx' && ext !== 'csv') {
+    showToast('يجب أن يكون الملف من نوع xlsx أو csv', 'error');
+    input.value = ''; return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      const dataRows = rows.slice(1).filter(r => r.some(c => String(c).trim() !== ''));
+      importParsedFile = file;
+      const preview = dataRows.slice(0, 5);
+      document.getElementById('imp-preview-body').innerHTML = preview.map(row => `<tr>
+        <td>${String(row[0]||'').trim() || 'عام'}</td>
+        <td>${String(row[1]||'').trim() || '—'}</td>
+        <td>${String(row[2]||'').trim() || '—'}</td>
+      </tr>`).join('');
+      const over = dataRows.length > 200;
+      document.getElementById('imp-total-count').textContent =
+        `إجمالي البنود: ${dataRows.length}${over ? ' ⚠ تجاوز الحد الأقصى 200' : ''}`;
+      document.getElementById('imp-preview').style.display = 'block';
+      document.getElementById('imp-confirm-btn').disabled = dataRows.length === 0 || over;
+      if (over) showToast('الحد الأقصى 200 بند لكل استيراد', 'warning');
+    } catch(ex) {
+      showToast('خطأ في قراءة الملف', 'error');
+      input.value = ''; importParsedFile = null;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function downloadSample() {
+  const a = document.createElement('a');
+  a.href = '/api/checklists/sample';
+  a.download = 'checklist-sample.xlsx';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+async function confirmImport() {
+  const name = document.getElementById('imp-name').value.trim();
+  if (!name) return showToast('يرجى إدخال اسم القائمة', 'warning');
+  const isGlobal = document.getElementById('imp-is-global').checked;
+  const deptId = document.getElementById('imp-dept').value;
+  if (!isGlobal && !deptId) return showToast('يرجى اختيار القسم', 'warning');
+  if (!importParsedFile) return showToast('يرجى اختيار ملف', 'warning');
+
+  const fd = new FormData();
+  fd.append('name', name);
+  fd.append('dept_id', deptId || '');
+  fd.append('is_global', isGlobal ? 'true' : 'false');
+  fd.append('inspection_type', document.getElementById('imp-insp-type').value || '');
+  fd.append('file', importParsedFile);
+
+  const btn = document.getElementById('imp-confirm-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الاستيراد...';
+  try {
+    const res = await fetch('/api/checklists/import', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'حدث خطأ');
+    showToast(`تم استيراد ${data.items_count} بند في ${data.sections_count} محور`, 'success');
+    closeModal('import-modal');
+    loadChecklists();
+  } catch(e) {
+    showToast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-file-import"></i> استيراد';
+  }
 }
 
 function openModal(id) { document.getElementById(id).classList.add('open'); }

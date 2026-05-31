@@ -9,6 +9,15 @@ const path = require('path');
 const fs = require('fs');
 const { Pool } = require('pg');
 const XLSX = require('xlsx');
+const multer = require('multer');
+const importUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    (ext === '.xlsx' || ext === '.csv') ? cb(null, true) : cb(new Error('يجب أن يكون الملف من نوع xlsx أو csv'));
+  },
+});
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -733,6 +742,77 @@ app.post('/api/inspections/:id/items/:itemId/photo', requireAuthAPI, async (req,
 // ══════════════════════════════════
 //  API — CHECKLISTS
 // ══════════════════════════════════
+
+app.get('/api/checklists/sample', requireAuthAPI, async (req, res) => {
+  try {
+    const wb = XLSX.utils.book_new();
+    const data = [
+      ['المحور', 'البند', 'مرجع GAHAR'],
+      ['السلامة العامة', 'التحقق من وجود معدات السلامة في أماكنها المخصصة', 'FS.1.1'],
+      ['السلامة العامة', 'التأكد من صلاحية طفايات الحريق وتاريخ الصيانة الدورية', 'FS.1.2'],
+      ['مكافحة العدوى', 'التحقق من توافر مستلزمات النظافة اليدوية في جميع المداخل', 'IC.2.1'],
+      ['مكافحة العدوى', 'مراجعة سجلات تدريب الموظفين على بروتوكولات مكافحة العدوى', 'IC.2.3'],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws['!cols'] = [{ wch: 25 }, { wch: 60 }, { wch: 15 }];
+    XLSX.utils.book_append_sheet(wb, ws, 'القائمة');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Disposition', 'attachment; filename="checklist-sample.xlsx"');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buf);
+  } catch (e) { res.status(500).json({ error: 'خطأ' }); }
+});
+
+app.post('/api/checklists/import', requireAuthAPI, requireRole('superadmin', 'quality_manager'), (req, res) => {
+  importUpload.single('file')(req, res, async (multerErr) => {
+    if (multerErr) return res.status(400).json({ error: multerErr.message });
+    try {
+      const { name, dept_id, is_global, inspection_type } = req.body;
+      if (!name) return res.status(400).json({ error: 'اسم القائمة مطلوب' });
+      if (!req.file) return res.status(400).json({ error: 'يرجى اختيار ملف' });
+
+      const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      const dataRows = rows.slice(1).filter(r => r.some(c => String(c).trim() !== ''));
+
+      if (dataRows.length === 0) return res.status(400).json({ error: 'الملف لا يحتوي على بيانات' });
+      if (dataRows.length > 200) return res.status(400).json({ error: 'الحد الأقصى 200 بند لكل استيراد' });
+
+      const globalFlag = is_global === 'true' || is_global === true;
+      const { rows: [tmpl] } = await pool.query(
+        "INSERT INTO checklist_templates(name,dept_id,is_global,inspection_type) VALUES($1,$2,$3,$4) RETURNING *",
+        [name, globalFlag ? null : (dept_id || null), globalFlag, inspection_type || null]
+      );
+
+      const sections = {};
+      const sectionOrder = [];
+      dataRows.forEach(row => {
+        const secName = String(row[0] || '').trim() || 'عام';
+        const itemText = String(row[1] || '').trim();
+        const gaharRef = String(row[2] || '').trim() || null;
+        if (!itemText) return;
+        if (!sections[secName]) { sections[secName] = []; sectionOrder.push(secName); }
+        sections[secName].push({ itemText, gaharRef });
+      });
+
+      let totalItems = 0;
+      for (const secName of sectionOrder) {
+        for (let i = 0; i < sections[secName].length; i++) {
+          const { itemText, gaharRef } = sections[secName][i];
+          await pool.query(
+            "INSERT INTO checklist_items(template_id,text,gahar_ref,order_num,section_name) VALUES($1,$2,$3,$4,$5)",
+            [tmpl.id, itemText, gaharRef, i + 1, secName]
+          );
+          totalItems++;
+        }
+      }
+
+      res.json({ success: true, template_id: tmpl.id, sections_count: sectionOrder.length, items_count: totalItems });
+    } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ في معالجة الملف' }); }
+  });
+});
+
 app.get('/api/checklists', requireAuthAPI, async (req, res) => {
   try {
     const { rows } = await pool.query(
