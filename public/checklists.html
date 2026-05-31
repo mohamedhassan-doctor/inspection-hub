@@ -48,8 +48,13 @@
         <input type="text" id="tmpl-name" class="form-control" placeholder="مثال: قائمة تدقيق الطوارئ">
       </div>
       <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="tmpl-is-global" onchange="toggleGlobalDept()"> قائمة عامة (تظهر لجميع الأقسام)
+        </label>
+      </div>
+      <div class="form-group" id="tmpl-dept-group">
         <label class="form-label">القسم</label>
-        <select id="tmpl-dept" class="form-control"><option value="">— عام —</option></select>
+        <select id="tmpl-dept" class="form-control"><option value="">— اختر القسم —</option></select>
       </div>
     </div>
     <div class="modal-footer">
@@ -111,19 +116,16 @@ async function loadInit() {
   });
 }
 
-async function loadChecklists() {
-  checklists = await api('GET', '/api/checklists');
-  const grid = document.getElementById('checklists-grid');
-  if (!checklists.length) {
-    grid.innerHTML = '<div class="card" style="grid-column:1/-1"><div class="card-body empty-state"><i class="fas fa-list-check"></i><p>لا توجد قوائم تدقيق بعد</p></div></div>';
-    return;
-  }
-  grid.innerHTML = checklists.map(t => `
+function renderChecklistCard(t) {
+  const globalBadge = t.is_global ? `<span class="badge badge-teal">عام 🌐</span>` : '';
+  const deptLabel = t.is_global ? 'جميع الأقسام' : (t.dept_name || 'عام');
+  return `
     <div class="card" style="margin-bottom:0">
       <div class="card-header">
         <div class="card-title"><i class="fas fa-list-check" style="color:#0e7490"></i> ${t.name}</div>
-        <div style="display:flex;gap:6px">
-          <span class="badge badge-secondary">${t.dept_name||'عام'}</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          ${globalBadge}
+          <span class="badge badge-secondary">${deptLabel}</span>
           <span class="badge badge-teal">${t.item_count} بنود</span>
           <button class="btn btn-secondary btn-sm btn-icon" onclick="editTemplate(${t.id})" title="تعديل"><i class="fas fa-edit"></i></button>
           <button class="btn btn-danger btn-sm btn-icon" onclick="deleteTemplate(${t.id})" title="حذف"><i class="fas fa-trash"></i></button>
@@ -138,7 +140,32 @@ async function loadChecklists() {
         <button class="btn btn-primary btn-sm" onclick="openAddItem(${t.id})"><i class="fas fa-plus"></i> إضافة بند</button>
       </div>
     </div>
-  `).join('');
+  `;
+}
+
+async function loadChecklists() {
+  checklists = await api('GET', '/api/checklists');
+  const grid = document.getElementById('checklists-grid');
+  if (!checklists.length) {
+    grid.innerHTML = '<div class="card" style="grid-column:1/-1"><div class="card-body empty-state"><i class="fas fa-list-check"></i><p>لا توجد قوائم تدقيق بعد</p></div></div>';
+    return;
+  }
+  const globalList = checklists.filter(t => t.is_global);
+  const regularList = checklists.filter(t => !t.is_global);
+  let html = '';
+  if (globalList.length) {
+    html += `<div style="grid-column:1/-1;padding:10px 0 6px;border-bottom:2px solid #0e7490;margin-bottom:4px">
+      <h3 style="color:#0e7490;font-size:15px;font-weight:700"><i class="fas fa-globe"></i> القوائم العامة</h3>
+    </div>`;
+    html += globalList.map(t => renderChecklistCard(t)).join('');
+  }
+  if (regularList.length) {
+    html += `<div style="grid-column:1/-1;padding:10px 0 6px;border-bottom:2px solid #e2e8f0;margin-bottom:4px${globalList.length ? ';margin-top:20px' : ''}">
+      <h3 style="color:#475569;font-size:15px;font-weight:700"><i class="fas fa-building"></i> قوائم الأقسام</h3>
+    </div>`;
+    html += regularList.map(t => renderChecklistCard(t)).join('');
+  }
+  grid.innerHTML = html;
 }
 
 async function loadItems(tmplId) {
@@ -164,11 +191,18 @@ async function loadItems(tmplId) {
 }
 
 // ── Templates ──
+function toggleGlobalDept() {
+  const isGlobal = document.getElementById('tmpl-is-global').checked;
+  document.getElementById('tmpl-dept-group').style.display = isGlobal ? 'none' : 'block';
+}
+
 function openCreateTemplate() {
   document.getElementById('tmpl-edit-id').value = '';
   document.getElementById('tmpl-modal-title').textContent = 'قائمة جديدة';
   document.getElementById('tmpl-name').value = '';
+  document.getElementById('tmpl-is-global').checked = false;
   document.getElementById('tmpl-dept').value = '';
+  document.getElementById('tmpl-dept-group').style.display = 'block';
   openModal('tmpl-modal');
 }
 
@@ -178,15 +212,19 @@ async function editTemplate(id) {
   document.getElementById('tmpl-edit-id').value = id;
   document.getElementById('tmpl-modal-title').textContent = 'تعديل القائمة';
   document.getElementById('tmpl-name').value = t.name;
+  document.getElementById('tmpl-is-global').checked = !!t.is_global;
   document.getElementById('tmpl-dept').value = t.dept_id || '';
+  document.getElementById('tmpl-dept-group').style.display = t.is_global ? 'none' : 'block';
   openModal('tmpl-modal');
 }
 
 async function saveTemplate() {
   const id = document.getElementById('tmpl-edit-id').value;
+  const isGlobal = document.getElementById('tmpl-is-global').checked;
   const body = {
     name: document.getElementById('tmpl-name').value.trim(),
-    dept_id: document.getElementById('tmpl-dept').value || null,
+    dept_id: isGlobal ? null : (document.getElementById('tmpl-dept').value || null),
+    is_global: isGlobal,
   };
   if (!body.name) return showToast('يرجى إدخال اسم القائمة', 'warning');
   try {

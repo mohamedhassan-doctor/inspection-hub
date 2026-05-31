@@ -207,6 +207,8 @@ document.getElementById('search').addEventListener('input', function() {
   renderTable(allInspections.filter(r => r.title.toLowerCase().includes(q) || (r.dept_name||'').toLowerCase().includes(q)));
 });
 
+document.getElementById('f-template').addEventListener('change', onTemplateChange);
+
 function renderTable(rows) {
   const tbody = document.getElementById('insp-tbody');
   if (!rows.length) {
@@ -246,6 +248,10 @@ function openCreateModal() {
   populateDeptSel();
   populateInspectorSel();
   populateTemplateSel(null);
+  const deptSel = document.getElementById('f-dept-sel');
+  deptSel.disabled = false;
+  deptSel.style.opacity = '';
+  if (deptSel.options[0]) deptSel.options[0].textContent = '— اختر القسم —';
   openModal('insp-modal');
 }
 
@@ -258,7 +264,13 @@ function populateDeptSel(selected) {
     if (selected && parseInt(selected) === d.id) o.selected = true;
     sel.appendChild(o);
   });
-  sel.addEventListener('change', () => populateTemplateSel(sel.value));
+  sel.onchange = () => {
+    const templateSel = document.getElementById('f-template');
+    const chosen = checklists.find(c => c.id == templateSel.value);
+    if (!templateSel.value || (chosen && chosen.is_global)) {
+      populateTemplateSel(sel.value);
+    }
+  };
 }
 
 function populateInspectorSel(selected) {
@@ -274,13 +286,48 @@ function populateInspectorSel(selected) {
 
 function populateTemplateSel(deptId) {
   const sel = document.getElementById('f-template');
+  const prevVal = sel.value;
   sel.innerHTML = '<option value="">— بدون قائمة —</option>';
-  const filtered = deptId ? checklists.filter(c => c.dept_id == deptId) : checklists;
+  const filtered = deptId
+    ? checklists.filter(c => c.dept_id == deptId || c.is_global)
+    : checklists;
   filtered.forEach(c => {
     const o = document.createElement('option');
-    o.value = c.id; o.textContent = c.name;
+    o.value = c.id;
+    o.textContent = c.is_global ? `${c.name} 🌐` : c.name;
+    o.dataset.isGlobal = c.is_global ? '1' : '0';
+    o.dataset.deptId = c.dept_id || '';
+    if (prevVal && c.id == prevVal) o.selected = true;
     sel.appendChild(o);
   });
+}
+
+function onTemplateChange() {
+  const templateSel = document.getElementById('f-template');
+  const deptSel = document.getElementById('f-dept-sel');
+  const deptLabel = document.querySelector('label[for="f-dept-sel"], #dept-label');
+
+  if (!templateSel.value) {
+    deptSel.disabled = false;
+    deptSel.style.opacity = '';
+    if (deptSel.options[0]) deptSel.options[0].textContent = '— اختر القسم —';
+    return;
+  }
+  const opt = templateSel.options[templateSel.selectedIndex];
+  const isGlobal = opt.dataset.isGlobal === '1';
+  const tmplDeptId = opt.dataset.deptId;
+
+  if (isGlobal) {
+    deptSel.disabled = false;
+    deptSel.style.opacity = '';
+    deptSel.value = '';
+    if (deptSel.options[0]) deptSel.options[0].textContent = 'اختر القسم لهذه الجولة *';
+  } else {
+    if (tmplDeptId) deptSel.value = tmplDeptId;
+    deptSel.disabled = true;
+    deptSel.style.opacity = '0.7';
+    if (deptSel.options[0]) deptSel.options[0].textContent = '— اختر القسم —';
+  }
 }
 
 async function editInspection(id) {
@@ -294,6 +341,9 @@ async function editInspection(id) {
     populateDeptSel(insp.dept_id);
     populateInspectorSel(insp.inspector_id);
     populateTemplateSel(insp.dept_id);
+    const deptSel = document.getElementById('f-dept-sel');
+    deptSel.disabled = false;
+    deptSel.style.opacity = '';
     document.getElementById('template-group').style.display = 'none';
     openModal('insp-modal');
   } catch (e) { showToast(e.message, 'error'); }
@@ -301,15 +351,19 @@ async function editInspection(id) {
 
 async function saveInspection() {
   const id = document.getElementById('edit-id').value;
+  const templateSel = document.getElementById('f-template');
+  const templateOpt = templateSel.options[templateSel.selectedIndex];
+  const isGlobalTemplate = templateSel.value && templateOpt.dataset.isGlobal === '1';
   const body = {
     title: document.getElementById('f-title').value.trim(),
     type: document.getElementById('f-insp-type').value,
     dept_id: document.getElementById('f-dept-sel').value || null,
     inspector_id: document.getElementById('f-inspector').value || null,
     scheduled_date: document.getElementById('f-date').value,
-    template_id: document.getElementById('f-template').value || null,
+    template_id: templateSel.value || null,
   };
   if (!body.title || !body.scheduled_date) return showToast('يرجى ملء الحقول المطلوبة', 'warning');
+  if (isGlobalTemplate && !body.dept_id) return showToast('يرجى اختيار القسم لهذه القائمة العامة', 'warning');
   try {
     if (id) {
       body.status = 'scheduled';

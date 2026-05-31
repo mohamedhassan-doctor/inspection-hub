@@ -111,6 +111,7 @@ async function initDB() {
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       dept_id INTEGER REFERENCES departments(id) ON DELETE SET NULL,
+      is_global BOOLEAN DEFAULT false,
       created_at TIMESTAMP DEFAULT NOW()
     );
 
@@ -183,6 +184,10 @@ async function initDB() {
     );
   `);
 
+  // Migrations for existing databases
+  await pool.query(`ALTER TABLE checklist_templates ADD COLUMN IF NOT EXISTS is_global BOOLEAN DEFAULT false`);
+  await pool.query(`UPDATE checklist_templates SET is_global=true, dept_id=null WHERE name='قائمة تدقيق مكافحة العدوى' AND is_global=false`);
+
   // Seed if empty
   const { rows: uRows } = await pool.query('SELECT COUNT(*) FROM users');
   if (parseInt(uRows[0].count) > 0) return;
@@ -223,11 +228,10 @@ async function initDB() {
     );
   }
 
-  // Infection control checklist
-  const { rows: [d2] } = await pool.query("SELECT id FROM departments WHERE name='التمريض'");
+  // Infection control checklist — global (applies to all departments)
   const { rows: [t2] } = await pool.query(
-    "INSERT INTO checklist_templates(name,dept_id) VALUES($1,$2) RETURNING id",
-    ['قائمة تدقيق مكافحة العدوى', d2.id]
+    "INSERT INTO checklist_templates(name,dept_id,is_global) VALUES($1,$2,$3) RETURNING id",
+    ['قائمة تدقيق مكافحة العدوى', null, true]
   );
   const icItems = [
     ['غسل الأيدي قبل وبعد التعامل مع المريض', 'IC.1'],
@@ -454,10 +458,18 @@ app.get('/api/inspections', requireAuthAPI, async (req, res) => {
 
 app.post('/api/inspections', requireAuthAPI, async (req, res) => {
   try {
-    const { title, type, dept_id, inspector_id, scheduled_date, template_id } = req.body;
+    const { title, type, inspector_id, scheduled_date, template_id } = req.body;
+    let { dept_id } = req.body;
+    if (template_id) {
+      const { rows: [tmpl] } = await pool.query(
+        "SELECT dept_id, is_global FROM checklist_templates WHERE id=$1",
+        [template_id]
+      );
+      if (tmpl && !tmpl.is_global) dept_id = tmpl.dept_id;
+    }
     const { rows: [insp] } = await pool.query(
       "INSERT INTO inspections(title,type,dept_id,inspector_id,scheduled_date,status) VALUES($1,$2,$3,$4,$5,'scheduled') RETURNING *",
-      [title, type, dept_id, inspector_id || req.session.userId, scheduled_date]
+      [title, type, dept_id || null, inspector_id || req.session.userId, scheduled_date]
     );
     if (template_id) {
       const { rows: items } = await pool.query(
@@ -596,10 +608,11 @@ app.get('/api/checklists', requireAuthAPI, async (req, res) => {
 
 app.post('/api/checklists', requireAuthAPI, requireRole('superadmin', 'quality_manager'), async (req, res) => {
   try {
-    const { name, dept_id } = req.body;
+    const { name, dept_id, is_global } = req.body;
+    const globalFlag = is_global === true || is_global === 'true';
     const { rows: [t] } = await pool.query(
-      "INSERT INTO checklist_templates(name,dept_id) VALUES($1,$2) RETURNING *",
-      [name, dept_id || null]
+      "INSERT INTO checklist_templates(name,dept_id,is_global) VALUES($1,$2,$3) RETURNING *",
+      [name, globalFlag ? null : (dept_id || null), globalFlag]
     );
     res.json(t);
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
@@ -607,10 +620,11 @@ app.post('/api/checklists', requireAuthAPI, requireRole('superadmin', 'quality_m
 
 app.put('/api/checklists/:id', requireAuthAPI, requireRole('superadmin', 'quality_manager'), async (req, res) => {
   try {
-    const { name, dept_id } = req.body;
+    const { name, dept_id, is_global } = req.body;
+    const globalFlag = is_global === true || is_global === 'true';
     const { rows: [t] } = await pool.query(
-      "UPDATE checklist_templates SET name=$1,dept_id=$2 WHERE id=$3 RETURNING *",
-      [name, dept_id || null, req.params.id]
+      "UPDATE checklist_templates SET name=$1,dept_id=$2,is_global=$3 WHERE id=$4 RETURNING *",
+      [name, globalFlag ? null : (dept_id || null), globalFlag, req.params.id]
     );
     res.json(t);
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
@@ -620,6 +634,15 @@ app.delete('/api/checklists/:id', requireAuthAPI, requireRole('superadmin', 'qua
   try {
     await pool.query("DELETE FROM checklist_templates WHERE id=$1", [req.params.id]);
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: 'خطأ' }); }
+});
+
+app.get('/api/checklists/global', requireAuthAPI, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT t.*, COUNT(i.id)::int AS item_count FROM checklist_templates t LEFT JOIN checklist_items i ON i.template_id=t.id WHERE t.is_global=true GROUP BY t.id ORDER BY t.created_at DESC"
+    );
+    res.json(rows);
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });
 
