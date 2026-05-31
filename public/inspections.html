@@ -180,6 +180,7 @@ async function loadInit() {
     api('GET', '/api/users/dropdown').catch(() => []),
     api('GET', '/api/checklists'),
   ]);
+  console.log('Templates loaded:', checklists.length);
   const ds = document.getElementById('f-dept');
   depts.forEach(d => {
     const o = document.createElement('option');
@@ -245,6 +246,8 @@ function openCreateModal() {
   document.getElementById('f-title').value = '';
   document.getElementById('f-insp-type').value = 'safety';
   document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
+  // Always show the template group (may have been hidden by editInspection)
+  document.getElementById('template-group').style.display = '';
   populateDeptSel();
   populateInspectorSel();
   populateTemplateSel(null);
