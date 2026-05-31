@@ -41,6 +41,10 @@ async function initPage(activeLink) {
     if (data.role !== 'superadmin') {
       document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
     }
+    // Hide dept-admin elements for roles below quality_manager
+    if (data.role !== 'superadmin' && data.role !== 'quality_manager') {
+      document.querySelectorAll('.dept-admin').forEach(el => el.style.display = 'none');
+    }
 
     // CAPA badge update
     updateCapaBadge();

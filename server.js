@@ -337,6 +337,7 @@ app.get('/checklists', requireAuth, serveHTML('checklists.html'));
 app.get('/findings', requireAuth, serveHTML('findings.html'));
 app.get('/capa', requireAuth, serveHTML('capa.html'));
 app.get('/reports', requireAuth, serveHTML('reports.html'));
+app.get('/departments', requireAuth, requireRole('superadmin', 'quality_manager'), serveHTML('departments.html'));
 app.get('/users', requireAuth, requireRole('superadmin'), serveHTML('users.html'));
 
 // ══════════════════════════════════
@@ -350,8 +351,71 @@ app.get('/api/session', requireAuthAPI, (req, res) => {
 //  API — DEPARTMENTS
 // ══════════════════════════════════
 app.get('/api/departments', requireAuthAPI, async (req, res) => {
-  const { rows } = await pool.query('SELECT * FROM departments ORDER BY id');
-  res.json(rows);
+  try {
+    const { rows } = await pool.query(`
+      SELECT d.id, d.name,
+        COUNT(DISTINCT i.id)::int  AS inspection_count,
+        COUNT(DISTINCT i.inspector_id)::int AS user_count
+      FROM departments d
+      LEFT JOIN inspections i ON i.dept_id = d.id
+      GROUP BY d.id, d.name
+      ORDER BY d.id
+    `);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: 'خطأ' }); }
+});
+
+app.post('/api/departments', requireAuthAPI, requireRole('superadmin', 'quality_manager'), async (req, res) => {
+  try {
+    const name = (req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'يرجى إدخال اسم القسم' });
+    const { rows: dup } = await pool.query(
+      "SELECT id FROM departments WHERE LOWER(TRIM(name))=LOWER(TRIM($1))", [name]
+    );
+    if (dup.length) return res.status(400).json({ error: 'يوجد قسم بنفس الاسم مسبقاً' });
+    const { rows: [d] } = await pool.query("INSERT INTO departments(name) VALUES($1) RETURNING *", [name]);
+    res.json(d);
+  } catch (e) { res.status(500).json({ error: 'خطأ في الإضافة' }); }
+});
+
+app.put('/api/departments/:id', requireAuthAPI, requireRole('superadmin', 'quality_manager'), async (req, res) => {
+  try {
+    const name = (req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'يرجى إدخال اسم القسم' });
+    const { rows: dup } = await pool.query(
+      "SELECT id FROM departments WHERE LOWER(TRIM(name))=LOWER(TRIM($1)) AND id!=$2", [name, req.params.id]
+    );
+    if (dup.length) return res.status(400).json({ error: 'يوجد قسم بنفس الاسم مسبقاً' });
+    const { rows: [d] } = await pool.query(
+      "UPDATE departments SET name=$1 WHERE id=$2 RETURNING *", [name, req.params.id]
+    );
+    if (!d) return res.status(404).json({ error: 'القسم غير موجود' });
+    res.json(d);
+  } catch (e) { res.status(500).json({ error: 'خطأ في التحديث' }); }
+});
+
+app.delete('/api/departments/:id', requireAuthAPI, requireRole('superadmin', 'quality_manager'), async (req, res) => {
+  try {
+    const { rows: [counts] } = await pool.query(`
+      SELECT
+        COUNT(DISTINCT i.id)::int   AS insp,
+        COUNT(DISTINCT ct.id)::int  AS tmpl,
+        COUNT(DISTINCT f.id)::int   AS find
+      FROM departments d
+      LEFT JOIN inspections        i  ON i.dept_id  = d.id
+      LEFT JOIN checklist_templates ct ON ct.dept_id = d.id
+      LEFT JOIN findings            f  ON f.dept_id  = d.id
+      WHERE d.id = $1
+    `, [req.params.id]);
+    if (counts.insp > 0)
+      return res.status(400).json({ error: `لا يمكن الحذف — يوجد ${counts.insp} جولة مرتبطة بهذا القسم` });
+    if (counts.tmpl > 0)
+      return res.status(400).json({ error: `لا يمكن الحذف — يوجد ${counts.tmpl} قائمة تدقيق مرتبطة بهذا القسم` });
+    if (counts.find > 0)
+      return res.status(400).json({ error: `لا يمكن الحذف — يوجد ${counts.find} مخالفة مرتبطة بهذا القسم` });
+    await pool.query("DELETE FROM departments WHERE id=$1", [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: 'خطأ في الحذف' }); }
 });
 
 // ══════════════════════════════════
