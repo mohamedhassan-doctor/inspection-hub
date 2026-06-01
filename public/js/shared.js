@@ -94,6 +94,7 @@ const inspTypeLabels = {
   radiation_safety: 'السلامة الإشعاعية',
   lab_safety: 'سلامة المعمل',
   surgical_safety: 'السلامة الجراحية',
+  communication_safety: 'سلامة التواصل',
   comprehensive_multidisciplinary: 'جولة شاملة متعددة التخصصات',
 };
 

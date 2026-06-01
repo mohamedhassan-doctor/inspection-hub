@@ -554,6 +554,7 @@ app.get('/api/inspections/suggest-title', requireAuthAPI, async (req, res) => {
       radiation_safety: 'السلامة الإشعاعية',
       lab_safety: 'سلامة المعمل',
       surgical_safety: 'السلامة الجراحية',
+      communication_safety: 'سلامة التواصل',
       comprehensive_multidisciplinary: 'جولة شاملة متعددة التخصصات',
       safety: 'السلامة البيئية',
       cleanliness: 'النظافة',
