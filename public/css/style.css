@@ -535,12 +535,16 @@ tr.overdue td { color: #7f1d1d; }
 /* ── Mobile (max 767px) ── */
 @media (max-width: 767px) {
 
+  /* Prevent horizontal scroll on mobile */
+  html, body { overflow-x: hidden; }
+
   /* Sidebar — slide in/out from right (RTL) */
   .sidebar {
     transform: translateX(110%);
     transition: transform 0.3s ease;
     z-index: 300;
     width: 270px;
+    -webkit-overflow-scrolling: touch;
   }
   .sidebar.mobile-open { transform: translateX(0); }
 
@@ -618,6 +622,7 @@ tr.overdue td { color: #7f1d1d; }
   .modal-body {
     flex: 1;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     padding: 16px;
     max-height: none !important;
   }
