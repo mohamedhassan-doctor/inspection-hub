@@ -538,6 +538,9 @@ tr.overdue td { color: #7f1d1d; }
   /* Prevent horizontal scroll on mobile */
   html, body { overflow-x: hidden; }
 
+  /* Main content — allow touch pan scroll */
+  .main-content { -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+
   /* Sidebar — slide in/out from right (RTL) */
   .sidebar {
     transform: translateX(110%);
@@ -545,6 +548,7 @@ tr.overdue td { color: #7f1d1d; }
     z-index: 300;
     width: 270px;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
   }
   .sidebar.mobile-open { transform: translateX(0); }
 
@@ -599,8 +603,8 @@ tr.overdue td { color: #7f1d1d; }
   .filter-bar .form-control,
   .filter-bar .form-control.search { width: 100%; min-width: 100%; }
 
-  /* Tables — hide tagged columns, smooth scroll */
-  .table-wrapper { -webkit-overflow-scrolling: touch; }
+  /* Tables — hide tagged columns, smooth horizontal scroll */
+  .table-wrapper { -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; max-width: 100%; overflow-x: auto; }
   thead th, tbody td { padding: 10px 8px; }
   .col-hide-mobile { display: none !important; }
 
@@ -623,6 +627,7 @@ tr.overdue td { color: #7f1d1d; }
     flex: 1;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
     padding: 16px;
     max-height: none !important;
   }
