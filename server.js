@@ -334,6 +334,7 @@ app.post('/login', loginLimiter, async (req, res) => {
     req.session.userId = user.id;
     req.session.role = user.role;
     req.session.name = user.name;
+    req.session.deptId = user.department_id || null;
     await audit(user.id, 'login', `دخول المستخدم ${user.username}`);
     res.json({ ok: true, role: user.role });
   } catch (e) {
@@ -362,7 +363,7 @@ app.get('/users', requireAuth, requireRole('superadmin'), serveHTML('users.html'
 //  API — SESSION
 // ══════════════════════════════════
 app.get('/api/session', requireAuthAPI, (req, res) => {
-  res.json({ id: req.session.userId, role: req.session.role, name: req.session.name });
+  res.json({ id: req.session.userId, role: req.session.role, name: req.session.name, department_id: req.session.deptId });
 });
 
 // ══════════════════════════════════
@@ -441,11 +442,19 @@ app.delete('/api/departments/:id', requireAuthAPI, requireRole('superadmin', 'qu
 // ══════════════════════════════════
 app.get('/api/dashboard/stats', requireAuthAPI, async (req, res) => {
   try {
+    const isDH = req.session.role === 'dept_head';
+    const dId = req.session.deptId;
+    if (isDH && !dId) return res.json({ total: 0, avg_compliance: 0, open_findings: 0, overdue_capas: 0 });
+
+    const dp = isDH ? [dId] : [];
+    const dw = isDH ? `AND dept_id=$1` : '';
+    const fw = isDH ? `AND f.dept_id=$1` : '';
+
     const [r1, r2, r3, r4] = await Promise.all([
-      pool.query(`SELECT COUNT(*) FROM inspections WHERE DATE_TRUNC('month',scheduled_date)=DATE_TRUNC('month',CURRENT_DATE)`),
-      pool.query(`SELECT ROUND(AVG(compliance_score),1) AS avg FROM inspections WHERE status='completed' AND DATE_TRUNC('month',scheduled_date)=DATE_TRUNC('month',CURRENT_DATE)`),
-      pool.query(`SELECT COUNT(DISTINCT f.id) AS cnt FROM findings f LEFT JOIN capas c ON c.finding_id=f.id WHERE c.id IS NULL OR c.status!='closed'`),
-      pool.query(`SELECT COUNT(*) FROM capas WHERE status='overdue'`),
+      pool.query(`SELECT COUNT(*) FROM inspections WHERE DATE_TRUNC('month',scheduled_date)=DATE_TRUNC('month',CURRENT_DATE) ${dw}`, dp),
+      pool.query(`SELECT ROUND(AVG(compliance_score),1) AS avg FROM inspections WHERE status='completed' AND DATE_TRUNC('month',scheduled_date)=DATE_TRUNC('month',CURRENT_DATE) ${dw}`, dp),
+      pool.query(`SELECT COUNT(DISTINCT f.id) AS cnt FROM findings f LEFT JOIN capas c ON c.finding_id=f.id WHERE (c.id IS NULL OR c.status!='closed') ${fw}`, dp),
+      pool.query(`SELECT COUNT(*) FROM capas c ${isDH ? 'JOIN findings f ON f.id=c.finding_id' : ''} WHERE c.status='overdue' ${fw}`, dp),
     ]);
     res.json({
       total: parseInt(r1.rows[0].count),
@@ -458,12 +467,22 @@ app.get('/api/dashboard/stats', requireAuthAPI, async (req, res) => {
 
 app.get('/api/dashboard/departments', requireAuthAPI, async (req, res) => {
   try {
+    const isDH = req.session.role === 'dept_head';
+    const dId = req.session.deptId;
+    if (isDH && !dId) return res.json([]);
+
     const month = req.query.month; // format: YYYY-MM
     let dateFilter = `DATE_TRUNC('month',i.scheduled_date)=DATE_TRUNC('month',CURRENT_DATE)`;
     const params = [];
     if (month) {
       dateFilter = `DATE_TRUNC('month',i.scheduled_date)=DATE_TRUNC('month',$1::date)`;
       params.push(month + '-01');
+    }
+
+    let deptFilter = '';
+    if (isDH) {
+      params.push(dId);
+      deptFilter = `AND d.id=$${params.length}`;
     }
 
     const q = `
@@ -483,6 +502,7 @@ app.get('/api/dashboard/departments', requireAuthAPI, async (req, res) => {
         COALESCE(ROUND(AVG(s.compliance),1),0) AS avg_compliance
       FROM departments d
       LEFT JOIN scores s ON s.dept_id=d.id
+      WHERE 1=1 ${deptFilter}
       GROUP BY d.id, d.name
       ORDER BY d.name
     `;
@@ -493,12 +513,21 @@ app.get('/api/dashboard/departments', requireAuthAPI, async (req, res) => {
 
 app.get('/api/dashboard/recent', requireAuthAPI, async (req, res) => {
   try {
+    const isDH = req.session.role === 'dept_head';
+    const dId = req.session.deptId;
+    if (isDH && !dId) return res.json({ inspections: [], overdue_capas: [] });
+
+    const dp = isDH ? [dId] : [];
+    const iw = isDH ? `WHERE i.dept_id=$1` : '';
+    const cw = isDH ? `AND f.dept_id=$1` : '';
+
     const [r1, r2] = await Promise.all([
       pool.query(`
         SELECT i.id, i.title, i.type, i.scheduled_date, i.status, i.compliance_score, d.name AS dept_name
         FROM inspections i LEFT JOIN departments d ON d.id=i.dept_id
+        ${iw}
         ORDER BY i.created_at DESC LIMIT 5
-      `),
+      `, dp),
       pool.query(`
         SELECT c.id, c.action, c.due_date, c.status, u.name AS responsible,
           d.name AS dept_name, f.severity
@@ -506,9 +535,9 @@ app.get('/api/dashboard/recent', requireAuthAPI, async (req, res) => {
         LEFT JOIN findings f ON f.id=c.finding_id
         LEFT JOIN departments d ON d.id=f.dept_id
         LEFT JOIN users u ON u.id=c.responsible_id
-        WHERE c.status='overdue'
+        WHERE c.status='overdue' ${cw}
         ORDER BY c.due_date ASC LIMIT 5
-      `),
+      `, dp),
     ]);
     res.json({ inspections: r1.rows, overdue_capas: r2.rows });
   } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
@@ -519,7 +548,15 @@ app.get('/api/dashboard/recent', requireAuthAPI, async (req, res) => {
 // ══════════════════════════════════
 app.get('/api/inspections', requireAuthAPI, async (req, res) => {
   try {
-    const { dept, type, status, date } = req.query;
+    const isDH = req.session.role === 'dept_head';
+    const dId = req.session.deptId;
+    if (isDH && !dId) return res.json([]);
+
+    const { type, status, date } = req.query;
+    let { dept } = req.query;
+    // dept_head is always locked to their own department
+    if (isDH) dept = dId;
+
     let where = ['1=1'];
     const params = [];
     if (dept) { params.push(dept); where.push(`i.dept_id=$${params.length}`); }
@@ -619,6 +656,8 @@ app.get('/api/inspections/:id', requireAuthAPI, async (req, res) => {
       [req.params.id]
     );
     if (!insp) return res.status(404).json({ error: 'غير موجود' });
+    if (req.session.role === 'dept_head' && insp.dept_id !== req.session.deptId)
+      return res.status(403).json({ error: 'ليس لديك صلاحية' });
     res.json(insp);
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });
@@ -943,7 +982,14 @@ app.delete('/api/checklists/:id/sections', requireAuthAPI, requireRole('superadm
 // ══════════════════════════════════
 app.get('/api/findings', requireAuthAPI, async (req, res) => {
   try {
-    const { severity, dept, status } = req.query;
+    const isDH = req.session.role === 'dept_head';
+    const dId = req.session.deptId;
+    if (isDH && !dId) return res.json([]);
+
+    const { severity, status } = req.query;
+    let { dept } = req.query;
+    if (isDH) dept = dId;
+
     let where = ['1=1'];
     const params = [];
     if (severity) { params.push(severity); where.push(`f.severity=$${params.length}`); }
@@ -1001,14 +1047,26 @@ app.delete('/api/findings/:id', requireAuthAPI, requireRole('superadmin', 'quali
 // ══════════════════════════════════
 app.get('/api/capa/overdue-count', requireAuthAPI, async (req, res) => {
   try {
-    const { rows } = await pool.query("SELECT COUNT(*) FROM capas WHERE status='overdue'");
+    const isDH = req.session.role === 'dept_head';
+    const dId = req.session.deptId;
+    if (isDH && !dId) return res.json({ count: 0 });
+    const { rows } = isDH
+      ? await pool.query(`SELECT COUNT(*) FROM capas c JOIN findings f ON f.id=c.finding_id WHERE c.status='overdue' AND f.dept_id=$1`, [dId])
+      : await pool.query(`SELECT COUNT(*) FROM capas WHERE status='overdue'`);
     res.json({ count: parseInt(rows[0].count) });
   } catch { res.json({ count: 0 }); }
 });
 
 app.get('/api/capa', requireAuthAPI, async (req, res) => {
   try {
-    const { status, dept } = req.query;
+    const isDH = req.session.role === 'dept_head';
+    const dId = req.session.deptId;
+    if (isDH && !dId) return res.json([]);
+
+    const { status } = req.query;
+    let { dept } = req.query;
+    if (isDH) dept = dId;
+
     let where = ['1=1'];
     const params = [];
     if (status) { params.push(status); where.push(`c.status=$${params.length}`); }
@@ -1070,6 +1128,14 @@ app.delete('/api/capa/:id', requireAuthAPI, requireRole('superadmin', 'quality_m
 // ══════════════════════════════════
 app.get('/api/reports/compliance', requireAuthAPI, async (req, res) => {
   try {
+    const isDH = req.session.role === 'dept_head';
+    const dId = req.session.deptId;
+    if (isDH && !dId) return res.json([]);
+
+    const params = isDH ? [dId] : [];
+    const iw = isDH ? `AND i.dept_id=$1` : '';
+    const dw = isDH ? `AND d.id=$1` : '';
+
     const { rows } = await pool.query(`
       WITH scores AS (
         SELECT i.dept_id, i.id,
@@ -1079,48 +1145,79 @@ app.get('/api/reports/compliance', requireAuthAPI, async (req, res) => {
             ELSE 0 END AS compliance
         FROM inspections i
         LEFT JOIN inspection_items ii ON ii.inspection_id=i.id
-        WHERE i.status='completed'
+        WHERE i.status='completed' ${iw}
         GROUP BY i.dept_id, i.id
       )
       SELECT d.name, COALESCE(ROUND(AVG(s.compliance),1),0) AS avg_compliance, COUNT(s.id)::int AS count
       FROM departments d
       LEFT JOIN scores s ON s.dept_id=d.id
+      WHERE 1=1 ${dw}
       GROUP BY d.id, d.name ORDER BY avg_compliance DESC
-    `);
+    `, params);
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });
 
 app.get('/api/reports/pareto', requireAuthAPI, async (req, res) => {
   try {
+    const isDH = req.session.role === 'dept_head';
+    const dId = req.session.deptId;
+    if (isDH && !dId) return res.json([]);
+
+    const params = isDH ? [dId] : [];
+    const fw = isDH ? `WHERE f.dept_id=$1` : '';
+
     const { rows } = await pool.query(`
       SELECT ii.item_text, COUNT(*)::int AS frequency, f.severity
       FROM findings f
       LEFT JOIN inspection_items ii ON ii.id=f.item_id
+      ${fw}
       GROUP BY ii.item_text, f.severity
       ORDER BY frequency DESC
       LIMIT 10
-    `);
+    `, params);
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });
 
 app.get('/api/reports/capa-rate', requireAuthAPI, async (req, res) => {
   try {
-    const { rows } = await pool.query(`
-      SELECT
-        COUNT(*)::int AS total,
-        COUNT(CASE WHEN status='closed' THEN 1 END)::int AS closed,
-        COUNT(CASE WHEN status='overdue' THEN 1 END)::int AS overdue,
-        COUNT(CASE WHEN status='open' OR status='in_progress' THEN 1 END)::int AS open
-      FROM capas
-    `);
+    const isDH = req.session.role === 'dept_head';
+    const dId = req.session.deptId;
+    if (isDH && !dId) return res.json({ total: 0, closed: 0, overdue: 0, open: 0 });
+
+    const { rows } = isDH
+      ? await pool.query(`
+          SELECT
+            COUNT(c.*)::int AS total,
+            COUNT(CASE WHEN c.status='closed' THEN 1 END)::int AS closed,
+            COUNT(CASE WHEN c.status='overdue' THEN 1 END)::int AS overdue,
+            COUNT(CASE WHEN c.status='open' OR c.status='in_progress' THEN 1 END)::int AS open
+          FROM capas c
+          JOIN findings f ON f.id=c.finding_id
+          WHERE f.dept_id=$1
+        `, [dId])
+      : await pool.query(`
+          SELECT
+            COUNT(*)::int AS total,
+            COUNT(CASE WHEN status='closed' THEN 1 END)::int AS closed,
+            COUNT(CASE WHEN status='overdue' THEN 1 END)::int AS overdue,
+            COUNT(CASE WHEN status='open' OR status='in_progress' THEN 1 END)::int AS open
+          FROM capas
+        `);
     res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });
 
 app.get('/api/reports/monthly', requireAuthAPI, async (req, res) => {
   try {
+    const isDH = req.session.role === 'dept_head';
+    const dId = req.session.deptId;
+    if (isDH && !dId) return res.json([]);
+
+    const params = isDH ? [dId] : [];
+    const dw = isDH ? `AND i.dept_id=$1` : '';
+
     const { rows } = await pool.query(`
       SELECT
         TO_CHAR(DATE_TRUNC('month',scheduled_date),'YYYY-MM') AS month,
@@ -1129,20 +1226,27 @@ app.get('/api/reports/monthly', requireAuthAPI, async (req, res) => {
         COUNT(*)::int AS count
       FROM inspections i
       LEFT JOIN departments d ON d.id=i.dept_id
-      WHERE i.status='completed' AND scheduled_date >= NOW() - INTERVAL '6 months'
+      WHERE i.status='completed' AND scheduled_date >= NOW() - INTERVAL '6 months' ${dw}
       GROUP BY DATE_TRUNC('month',scheduled_date), d.name
       ORDER BY month, dept_name
-    `);
+    `, params);
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });
 
 app.get('/api/reports/export', requireAuthAPI, async (req, res) => {
   try {
+    const isDH = req.session.role === 'dept_head';
+    const dId = req.session.deptId;
+    const dp = isDH && dId ? [dId] : [];
+    const iw = isDH && dId ? `WHERE i.dept_id=$1` : '';
+    const fw = isDH && dId ? `WHERE f.dept_id=$1` : '';
+    const cw = isDH && dId ? `WHERE f.dept_id=$1` : '';
+
     const [r1, r2, r3] = await Promise.all([
-      pool.query(`SELECT i.title, i.type, d.name AS dept, i.scheduled_date, i.status, i.compliance_score, u.name AS inspector FROM inspections i LEFT JOIN departments d ON d.id=i.dept_id LEFT JOIN users u ON u.id=i.inspector_id ORDER BY i.scheduled_date DESC`),
-      pool.query(`SELECT f.description, f.severity, d.name AS dept, i.title AS inspection, f.created_at FROM findings f LEFT JOIN departments d ON d.id=f.dept_id LEFT JOIN inspections i ON i.id=f.inspection_id ORDER BY f.created_at DESC`),
-      pool.query(`SELECT c.action, c.due_date, c.status, u.name AS responsible, f.description AS finding FROM capas c LEFT JOIN users u ON u.id=c.responsible_id LEFT JOIN findings f ON f.id=c.finding_id ORDER BY c.due_date`),
+      pool.query(`SELECT i.title, i.type, d.name AS dept, i.scheduled_date, i.status, i.compliance_score, u.name AS inspector FROM inspections i LEFT JOIN departments d ON d.id=i.dept_id LEFT JOIN users u ON u.id=i.inspector_id ${iw} ORDER BY i.scheduled_date DESC`, dp),
+      pool.query(`SELECT f.description, f.severity, d.name AS dept, i.title AS inspection, f.created_at FROM findings f LEFT JOIN departments d ON d.id=f.dept_id LEFT JOIN inspections i ON i.id=f.inspection_id ${fw} ORDER BY f.created_at DESC`, dp),
+      pool.query(`SELECT c.action, c.due_date, c.status, u.name AS responsible, f.description AS finding FROM capas c LEFT JOIN users u ON u.id=c.responsible_id LEFT JOIN findings f ON f.id=c.finding_id ${cw} ORDER BY c.due_date`, dp),
     ]);
 
     const wb = XLSX.utils.book_new();
