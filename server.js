@@ -455,18 +455,6 @@ app.get('/api/session', requireAuthAPI, (req, res) => {
   res.json({ id: req.session.userId, role: req.session.role, name: req.session.name, department_id: req.session.deptId, department_name: req.session.deptName });
 });
 
-// ── TEMP DEBUG — remove after use ──
-app.get('/api/debug/schedule-sync', async (req, res) => {
-  try {
-    const { inspection_id } = req.query;
-    const q = inspection_id
-      ? `SELECT ws.*, i.scheduled_date, i.dept_id FROM weekly_schedules ws LEFT JOIN inspections i ON i.id = ws.inspection_id WHERE ws.inspection_id = ${parseInt(inspection_id)}`
-      : `SELECT ws.*, i.scheduled_date, i.dept_id FROM weekly_schedules ws LEFT JOIN inspections i ON i.id = ws.inspection_id ORDER BY ws.id DESC LIMIT 10`;
-    const { rows } = await pool.query(q);
-    res.json(rows);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
 // ══════════════════════════════════
 //  API — DEPARTMENTS
 // ══════════════════════════════════
