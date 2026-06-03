@@ -97,7 +97,7 @@
       <div class="form-row cols-2">
         <div class="form-group">
           <label class="form-label">القسم *</label>
-          <select id="m-dept" class="form-control" onchange="loadDeptPreview()">
+          <select id="m-dept" class="form-control">
             <option value="">— اختر القسم —</option>
           </select>
         </div>
@@ -112,6 +112,12 @@
           </select>
         </div>
         <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">نوع الجولة *</label>
+          <select id="m-type" class="form-control">
+            <option value="">— اختر نوع الجولة —</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
           <label class="form-label">المفتش *</label>
           <select id="m-inspector" class="form-control">
             <option value="">— اختر المفتش —</option>
@@ -120,19 +126,6 @@
         <div class="form-group" style="grid-column:1/-1">
           <label class="form-label">ملاحظات</label>
           <input type="text" id="m-notes" class="form-control" placeholder="ملاحظات اختيارية...">
-        </div>
-      </div>
-
-      <!-- Dept preview -->
-      <div id="dept-preview" style="display:none;margin-top:12px;background:#f8fafc;border-radius:8px;padding:14px;border:1px solid #e2e8f0">
-        <div style="font-weight:600;margin-bottom:10px;color:#0e7490;font-size:14px"><i class="fas fa-eye"></i> معاينة قوائم القسم</div>
-        <div style="margin-bottom:12px">
-          <div style="font-size:12px;color:#64748b;margin-bottom:6px;font-weight:500">قوائم عامة (حسب النوع):</div>
-          <div id="preview-types" style="display:flex;flex-wrap:wrap;gap:5px"></div>
-        </div>
-        <div>
-          <div style="font-size:12px;color:#64748b;margin-bottom:6px;font-weight:500">قوائم خاصة بالقسم:</div>
-          <div id="preview-specific" style="font-size:13px;color:#475569"></div>
         </div>
       </div>
     </div>
@@ -147,7 +140,7 @@
 <script src="/js/shared.js"></script>
 <script>
 let depts = [], inspectors = [], allSchedule = [];
-let deptTypeMap = {}, deptCountMap = {};
+let deptCountMap = {};
 let currentWeekStart = getWeekStart(new Date());
 
 const dayNames = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
@@ -209,10 +202,9 @@ async function loadInit() {
     api('GET', '/api/users/inspectors'),
   ]);
 
-  // Pre-load checklist types for all departments
+  // Load dept-specific checklist counts
   try {
     const ct = await api('GET', '/api/departments/all-checklist-types');
-    deptTypeMap = ct.typeMap || {};
     deptCountMap = ct.countMap || {};
   } catch { /* optional */ }
 
@@ -222,6 +214,14 @@ async function loadInit() {
     const o = document.createElement('option');
     o.value = d.id; o.textContent = d.name;
     deptSel.appendChild(o);
+  });
+
+  // Populate inspection type dropdown in modal
+  const typeSel = document.getElementById('m-type');
+  Object.entries(inspTypeLabels).forEach(([val, label]) => {
+    const o = document.createElement('option');
+    o.value = val; o.textContent = label;
+    typeSel.appendChild(o);
   });
 
   // Populate inspector dropdown in modal
@@ -266,15 +266,14 @@ function renderTable() {
   });
 
   tbody.innerHTML = depts.map(dept => {
-    const types = deptTypeMap[dept.id] || [];
     const specCount = deptCountMap[dept.id] || 0;
 
     const cells = [0,1,2,3,4].map(day => {
       const entry = scheduleMap[dept.id]?.[day];
       if (entry) {
-        const typeBadges = types.map(t =>
-          `<span class="badge sched-badge ${typeColors[t] || 'badge-secondary'}">${inspTypeLabels[t] || t}</span>`
-        ).join('');
+        const typeBadge = entry.inspection_type
+          ? `<div class="sched-badges"><span class="badge sched-badge ${typeColors[entry.inspection_type] || 'badge-secondary'}">${inspTypeLabels[entry.inspection_type] || entry.inspection_type}</span></div>`
+          : '';
         return `<td>
           <div class="sched-cell-filled">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:4px">
@@ -284,7 +283,7 @@ function renderTable() {
               </button>
             </div>
             ${entry.notes ? `<div class="sched-notes">${entry.notes}</div>` : ''}
-            ${typeBadges ? `<div class="sched-badges">${typeBadges}</div>` : ''}
+            ${typeBadge}
             ${specCount ? `<div class="sched-count"><i class="fas fa-list-check"></i> ${specCount} قائمة خاصة</div>` : ''}
           </div>
         </td>`;
@@ -306,50 +305,32 @@ function renderTable() {
   }).join('');
 }
 
-async function loadDeptPreview() {
-  const deptId = document.getElementById('m-dept').value;
-  const previewDiv = document.getElementById('dept-preview');
-  if (!deptId) { previewDiv.style.display = 'none'; return; }
-  try {
-    const d = await api('GET', `/api/departments/${deptId}/checklists-preview`);
-    document.getElementById('preview-types').innerHTML = d.grouped_by_type.length
-      ? d.grouped_by_type.map(t =>
-          `<span class="badge ${typeColors[t.checklist_type] || 'badge-secondary'}">${inspTypeLabels[t.checklist_type] || t.checklist_type}</span>`
-        ).join('')
-      : '<span style="color:#94a3b8;font-size:13px">لا توجد قوائم عامة محددة</span>';
-    document.getElementById('preview-specific').innerHTML = d.department_specific.length
-      ? d.department_specific.map(c =>
-          `<div style="padding:3px 0;border-bottom:1px solid #f1f5f9"><i class="fas fa-list-check" style="color:#0e7490;margin-left:4px"></i> ${c.name}</div>`
-        ).join('')
-      : '<span style="color:#94a3b8;font-size:13px">لا توجد قوائم خاصة بهذا القسم</span>';
-    previewDiv.style.display = 'block';
-  } catch { previewDiv.style.display = 'none'; }
-}
-
 function openAddModal(deptId, dayOfWeek) {
   const deptSel = document.getElementById('m-dept');
   const daySel = document.getElementById('m-day');
   deptSel.value = deptId != null ? deptId : '';
   daySel.value = dayOfWeek != null ? dayOfWeek : 0;
+  document.getElementById('m-type').value = '';
   document.getElementById('m-inspector').value = '';
   document.getElementById('m-notes').value = '';
-  document.getElementById('dept-preview').style.display = 'none';
-  if (deptId != null) loadDeptPreview();
   openModal('add-modal');
 }
 
 async function saveSchedule() {
   const deptId = document.getElementById('m-dept').value;
   const dayOfWeek = document.getElementById('m-day').value;
+  const inspectionType = document.getElementById('m-type').value;
   const inspectorId = document.getElementById('m-inspector').value;
   const notes = document.getElementById('m-notes').value.trim();
   if (!deptId) return showToast('يرجى اختيار القسم', 'warning');
+  if (!inspectionType) return showToast('يرجى اختيار نوع الجولة', 'warning');
   if (!inspectorId) return showToast('يرجى اختيار المفتش', 'warning');
   try {
     await api('POST', '/api/weekly-schedules', {
       week_start_date: currentWeekStart,
       department_id: parseInt(deptId),
       day_of_week: parseInt(dayOfWeek),
+      inspection_type: inspectionType,
       inspector_id: parseInt(inspectorId),
       notes: notes || null,
     });

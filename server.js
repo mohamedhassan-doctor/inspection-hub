@@ -242,6 +242,7 @@ async function initDB() {
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
   )`);
+  await pool.query(`ALTER TABLE weekly_schedules ADD COLUMN IF NOT EXISTS inspection_type TEXT DEFAULT null`);
 
   // Seed department→checklist-type mappings (idempotent via ON CONFLICT DO NOTHING)
   const seedWeekly = require('./seed-weekly');
@@ -1457,13 +1458,13 @@ app.get('/api/weekly-schedules', requireAuthAPI, requireChecklist, async (req, r
 
 app.post('/api/weekly-schedules', requireAuthAPI, requireChecklist, async (req, res) => {
   try {
-    const { week_start_date, department_id, day_of_week, inspector_id, notes } = req.body;
+    const { week_start_date, department_id, day_of_week, inspector_id, notes, inspection_type } = req.body;
     if (!week_start_date || !department_id || day_of_week == null)
       return res.status(400).json({ error: 'يرجى ملء جميع الحقول المطلوبة' });
     const { rows: [ws] } = await pool.query(
-      `INSERT INTO weekly_schedules(week_start_date,department_id,day_of_week,inspector_id,notes,created_by)
-       VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [week_start_date, department_id, day_of_week, inspector_id || null, notes || null, req.session.userId]
+      `INSERT INTO weekly_schedules(week_start_date,department_id,day_of_week,inspector_id,notes,inspection_type,created_by)
+       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [week_start_date, department_id, day_of_week, inspector_id || null, notes || null, inspection_type || null, req.session.userId]
     );
     res.json(ws);
   } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
