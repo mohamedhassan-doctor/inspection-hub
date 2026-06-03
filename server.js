@@ -144,9 +144,9 @@ async function buildInspectionTitle(pool, type, dept_id, dateStr) {
 function computeWeekStart(dateStr) {
   const [y, mo, d] = dateStr.split('-').map(Number);
   const date = new Date(y, mo - 1, d);
-  const dow = date.getDay();
-  const sun = new Date(y, mo - 1, d - dow);
-  return `${sun.getFullYear()}-${String(sun.getMonth()+1).padStart(2,'0')}-${String(sun.getDate()).padStart(2,'0')}`;
+  const diff = (date.getDay() + 1) % 7; // days since last Saturday (Sat=0,Sun=1,...,Fri=6)
+  const sat = new Date(y, mo - 1, d - diff);
+  return `${sat.getFullYear()}-${String(sat.getMonth()+1).padStart(2,'0')}-${String(sat.getDate()).padStart(2,'0')}`;
 }
 
 // ── DB Init ──
@@ -278,6 +278,23 @@ async function initDB() {
   await pool.query(`ALTER TABLE weekly_schedules ADD COLUMN IF NOT EXISTS inspection_type TEXT DEFAULT null`);
   await pool.query(`ALTER TABLE weekly_schedules ADD COLUMN IF NOT EXISTS checklist_id INTEGER REFERENCES checklist_templates(id) ON DELETE SET NULL`);
   await pool.query(`ALTER TABLE weekly_schedules ADD COLUMN IF NOT EXISTS inspection_id INTEGER REFERENCES inspections(id) ON DELETE CASCADE`);
+
+  // Migration: widen day_of_week to 0-5 (Saturday=0 … Thursday=5)
+  await pool.query(`ALTER TABLE weekly_schedules DROP CONSTRAINT IF EXISTS weekly_schedules_day_of_week_check`);
+  await pool.query(`ALTER TABLE weekly_schedules ADD CONSTRAINT weekly_schedules_day_of_week_check CHECK(day_of_week BETWEEN 0 AND 5)`);
+  // Delete any entries whose actual date falls on Friday
+  await pool.query(`
+    DELETE FROM weekly_schedules
+    WHERE EXTRACT(DOW FROM (week_start_date + day_of_week * INTERVAL '1 day'))::int = 5
+  `);
+  // Recalculate day_of_week (Saturday=0…Thursday=5) and week_start_date for all existing rows
+  await pool.query(`
+    UPDATE weekly_schedules SET
+      day_of_week    = (EXTRACT(DOW FROM (week_start_date + day_of_week * INTERVAL '1 day'))::int + 1) % 7,
+      week_start_date = (week_start_date + day_of_week * INTERVAL '1 day')
+                        - (((EXTRACT(DOW FROM (week_start_date + day_of_week * INTERVAL '1 day'))::int + 1) % 7) * INTERVAL '1 day')
+    WHERE (EXTRACT(DOW FROM (week_start_date + day_of_week * INTERVAL '1 day'))::int + 1) % 7 != 6
+  `);
   await pool.query(`ALTER TABLE inspection_items ADD COLUMN IF NOT EXISTS checklist_item_id INTEGER REFERENCES checklist_items(id) ON DELETE SET NULL`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_inspection_items_repeat_check ON inspection_items (checklist_item_id, result)`);
 
@@ -793,8 +810,8 @@ app.post('/api/inspections', requireAuthAPI, requireInspectionWrite, async (req,
         // which is a JS Date object and produces wrong results with String()
         const dateStr = scheduled_date.split('T')[0];
         const [iy, imo, id_] = dateStr.split('-').map(Number);
-        const dow = new Date(iy, imo - 1, id_).getDay(); // 0=Sun … 6=Sat
-        if (dow <= 4) { // skip Friday(5) and Saturday(6)
+        const dow = (new Date(iy, imo - 1, id_).getDay() + 1) % 7; // Sat=0,Sun=1,Mon=2,Tue=3,Wed=4,Thu=5,Fri=6
+        if (dow !== 6) { // skip Friday
           const weekStart = computeWeekStart(dateStr);
           const { rows: existing } = await pool.query(
             "SELECT id FROM weekly_schedules WHERE inspection_id=$1", [insp.id]
@@ -856,6 +873,38 @@ app.put('/api/inspections/:id', requireAuthAPI, requireInspectionWrite, async (r
           "INSERT INTO inspection_items(inspection_id,item_text,gahar_ref,section_name,checklist_item_id) VALUES($1,$2,$3,$4,$5)",
           [req.params.id, item.text, item.gahar_ref, item.section_name || 'عام', item.id]
         );
+      }
+    }
+
+    // Full sync to linked weekly_schedules entry
+    if (dept_id && insp.type && scheduled_date) {
+      try {
+        const dateStr = (scheduled_date + '').split('T')[0];
+        const [iy, imo, id_] = dateStr.split('-').map(Number);
+        const newDow = (new Date(iy, imo - 1, id_).getDay() + 1) % 7; // Sat=0…Thu=5, Fri=6
+        const { rows: [wsRow] } = await pool.query(
+          "SELECT id FROM weekly_schedules WHERE inspection_id=$1", [req.params.id]
+        );
+        if (newDow === 6) {
+          // Friday — delete linked entry if it exists
+          if (wsRow) await pool.query("DELETE FROM weekly_schedules WHERE id=$1", [wsRow.id]);
+        } else {
+          const newWeekStart = computeWeekStart(dateStr);
+          if (wsRow) {
+            await pool.query(
+              `UPDATE weekly_schedules SET inspector_id=$1, department_id=$2, inspection_type=$3, checklist_id=$4, day_of_week=$5, week_start_date=$6 WHERE id=$7`,
+              [inspector_id || null, dept_id, insp.type, template_id || null, newDow, newWeekStart, wsRow.id]
+            );
+          } else {
+            await pool.query(
+              `INSERT INTO weekly_schedules(week_start_date,department_id,day_of_week,inspector_id,inspection_type,checklist_id,inspection_id,created_by)
+               VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+              [newWeekStart, dept_id, newDow, inspector_id || null, insp.type, template_id || null, req.params.id, req.session.userId]
+            );
+          }
+        }
+      } catch (syncErr) {
+        console.error('PUT Inspection→Schedule sync error:', syncErr.message);
       }
     }
 

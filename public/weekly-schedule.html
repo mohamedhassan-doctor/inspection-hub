@@ -68,6 +68,7 @@
             <thead>
               <tr>
                 <th style="text-align:right">القسم</th>
+                <th>السبت</th>
                 <th>الأحد</th>
                 <th>الاثنين</th>
                 <th>الثلاثاء</th>
@@ -76,7 +77,7 @@
               </tr>
             </thead>
             <tbody id="schedule-tbody">
-              <tr><td colspan="6"><div class="empty-state"><i class="fas fa-calendar-week"></i><p>جاري التحميل...</p></div></td></tr>
+              <tr><td colspan="7"><div class="empty-state"><i class="fas fa-calendar-week"></i><p>جاري التحميل...</p></div></td></tr>
             </tbody>
           </table>
         </div>
@@ -103,11 +104,12 @@
         <div class="form-group">
           <label class="form-label">اليوم *</label>
           <select id="m-day" class="form-control">
-            <option value="0">الأحد</option>
-            <option value="1">الاثنين</option>
-            <option value="2">الثلاثاء</option>
-            <option value="3">الأربعاء</option>
-            <option value="4">الخميس</option>
+            <option value="0">السبت</option>
+            <option value="1">الأحد</option>
+            <option value="2">الاثنين</option>
+            <option value="3">الثلاثاء</option>
+            <option value="4">الأربعاء</option>
+            <option value="5">الخميس</option>
           </select>
         </div>
         <div class="form-group" style="grid-column:1/-1">
@@ -147,7 +149,7 @@
 let depts = [], inspectors = [], allSchedule = [];
 let currentWeekStart = getWeekStart(new Date());
 
-const dayNames = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
+const dayNames = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
 
 const typeColors = {
   patient_safety:                  'badge-info',
@@ -166,8 +168,8 @@ const typeColors = {
 
 function getWeekStart(date) {
   const d = new Date(date);
-  const day = d.getDay();
-  d.setDate(d.getDate() - day);
+  const diff = (d.getDay() + 1) % 7; // days since last Saturday (Sat=0,Sun=1,...,Fri=6)
+  d.setDate(d.getDate() - diff);
   d.setHours(0, 0, 0, 0);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -191,7 +193,7 @@ function fmtShort(dateStr) {
 }
 
 function fmtWeekLabel(weekStart) {
-  const end = addDays(weekStart, 4);
+  const end = addDays(weekStart, 5);
   return `الأسبوع: ${fmtShort(weekStart)} — ${fmtShort(end)} ${new Date(weekStart).getFullYear()}`;
 }
 
@@ -255,7 +257,7 @@ async function loadSchedule() {
 function renderTable() {
   const tbody = document.getElementById('schedule-tbody');
   if (!depts.length) {
-    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><i class="fas fa-building"></i><p>لا توجد أقسام</p></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><i class="fas fa-building"></i><p>لا توجد أقسام</p></div></td></tr>';
     return;
   }
 
@@ -267,7 +269,7 @@ function renderTable() {
   });
 
   // Day date labels for header
-  const dayDates = [0,1,2,3,4].map(d => fmtShort(addDays(currentWeekStart, d)));
+  const dayDates = [0,1,2,3,4,5].map(d => fmtShort(addDays(currentWeekStart, d)));
 
   // Update header with dates
   const ths = document.querySelectorAll('#schedule-table thead th');
@@ -276,7 +278,7 @@ function renderTable() {
   });
 
   tbody.innerHTML = depts.map(dept => {
-    const cells = [0,1,2,3,4].map(day => {
+    const cells = [0,1,2,3,4,5].map(day => {
       const entry = scheduleMap[dept.id]?.[day];
       if (entry) {
         const typeBadge = entry.inspection_type
