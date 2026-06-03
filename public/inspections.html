@@ -665,6 +665,23 @@ async function openReport(id) {
       return `<tr><td><span class="${sl2.cls}">${sl2.text}</span></td><td>${f.description}</td></tr>`;
     }).join('') : '<tr><td colspan="2" style="text-align:center;color:#94a3b8">لا توجد مخالفات</td></tr>';
 
+    // Collect non-compliant and needs-improvement items across all sections
+    const followUpItems = [];
+    rptOrder.forEach(secName => {
+      rptSections[secName].forEach(item => {
+        if (item.result === 'non_compliant' || item.result === 'needs_improvement') {
+          followUpItems.push({ ...item, sectionName: secName });
+        }
+      });
+    });
+
+    const summaryRows = followUpItems.length === 0
+      ? '<tr><td colspan="6" style="text-align:center;color:#16a34a;font-weight:600;padding:16px">لا توجد بنود تحتاج متابعة ✓</td></tr>'
+      : followUpItems.map((item, idx) => {
+          const rl = resultLabels[item.result] || { text: item.result, cls: 'badge-secondary' };
+          return `<tr><td style="text-align:center;font-weight:600">${idx + 1}</td><td>${item.sectionName}</td><td>${item.item_text}</td><td>${item.gahar_ref || '—'}</td><td><span class="badge ${rl.cls}">${rl.text}</span></td><td>${item.notes || '—'}</td></tr>`;
+        }).join('');
+
     document.getElementById('report-content').innerHTML = `
       <div style="background:#f8fafc;padding:16px;border-radius:8px;margin-bottom:20px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -688,6 +705,13 @@ async function openReport(id) {
       <h4 style="margin:20px 0 12px">المخالفات المرصودة</h4>
       <div class="table-wrapper">
         <table><thead><tr><th>الخطورة</th><th>الوصف</th></tr></thead><tbody>${findingsHtml}</tbody></table>
+      </div>
+      <h4 style="margin:28px 0 12px;color:#b45309;display:flex;align-items:center;gap:8px"><i class="fas fa-clipboard-list"></i> ملخص البنود التي تحتاج متابعة</h4>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th style="width:40px">#</th><th>المحور</th><th>البند</th><th style="width:90px">GAHAR</th><th style="width:120px">النتيجة</th><th>ملاحظات</th></tr></thead>
+          <tbody>${summaryRows}</tbody>
+        </table>
       </div>
     `;
     openModal('report-modal');

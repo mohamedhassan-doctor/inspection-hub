@@ -532,6 +532,32 @@ tr.overdue td { color: #7f1d1d; }
   .cards-row.cols-4 { grid-template-columns: repeat(2, 1fr); }
 }
 
+/* ── Print / PDF ── */
+@media print {
+  body * { visibility: hidden; }
+  #report-content, #report-content * { visibility: visible; }
+  #report-content {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    padding: 20px;
+    background: #fff;
+  }
+  .badge { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .badge-danger { background: #fee2e2 !important; color: #dc2626 !important; }
+  .badge-warning { background: #fef9c3 !important; color: #a16207 !important; }
+  .badge-success { background: #dcfce7 !important; color: #15803d !important; }
+  .badge-secondary { background: #f1f5f9 !important; color: #475569 !important; }
+  .progress-bar-wrap { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .progress-bar { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .progress-bar.green { background: #22c55e !important; }
+  .progress-bar.yellow { background: #f59e0b !important; }
+  .progress-bar.red { background: #ef4444 !important; }
+  thead th { background: #f8fafc !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
 /* ── Mobile (max 767px) ── */
 @media (max-width: 767px) {
 
