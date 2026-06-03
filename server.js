@@ -116,6 +116,39 @@ async function calcCompliance(inspectionId) {
   return Math.round((compliant / total) * 100 * 10) / 10;
 }
 
+// ── Sync helpers ──
+const _typeLabels = {
+  environmental_safety:'السلامة البيئية', patient_safety:'سلامة المريض',
+  infection_control:'مكافحة العدوى', fire_safety:'سلامة الحريق',
+  medication:'الأدوية', medical_equipment:'المعدات الطبية',
+  facilities_infrastructure:'المرافق والبنية التحتية', radiation_safety:'السلامة الإشعاعية',
+  lab_safety:'سلامة المعمل', surgical_safety:'السلامة الجراحية',
+  communication_safety:'سلامة التواصل', comprehensive_multidisciplinary:'جولة شاملة متعددة التخصصات',
+  safety:'السلامة البيئية', cleanliness:'النظافة', patient_files:'ملفات المرضى',
+  equipment:'المعدات الطبية', gahar_prep:'تحضير GAHAR', facilities:'المرافق والبنية التحتية', multi:'جولة شاملة',
+};
+const _arMonths = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+
+async function buildInspectionTitle(pool, type, dept_id, dateStr) {
+  const { rows: [dept] } = await pool.query('SELECT name FROM departments WHERE id=$1', [dept_id]);
+  if (!dept) return 'جولة رقابية';
+  const [y, mo] = dateStr.split('-').map(Number);
+  const base = `جولة ${_typeLabels[type] || type} — ${dept.name} — ${_arMonths[mo - 1]} ${y}`;
+  const { rows: [{ count }] } = await pool.query(
+    `SELECT COUNT(*)::int AS count FROM inspections WHERE type=$1 AND dept_id=$2 AND DATE_TRUNC('month',scheduled_date)=DATE_TRUNC('month',$3::date)`,
+    [type, dept_id, dateStr]
+  );
+  return count === 0 ? base : `${base} (${count + 1})`;
+}
+
+function computeWeekStart(dateStr) {
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, mo - 1, d);
+  const dow = date.getDay();
+  const sun = new Date(y, mo - 1, d - dow);
+  return `${sun.getFullYear()}-${String(sun.getMonth()+1).padStart(2,'0')}-${String(sun.getDate()).padStart(2,'0')}`;
+}
+
 // ── DB Init ──
 async function initDB() {
   await pool.query(`
@@ -244,6 +277,7 @@ async function initDB() {
   )`);
   await pool.query(`ALTER TABLE weekly_schedules ADD COLUMN IF NOT EXISTS inspection_type TEXT DEFAULT null`);
   await pool.query(`ALTER TABLE weekly_schedules ADD COLUMN IF NOT EXISTS checklist_id INTEGER REFERENCES checklist_templates(id) ON DELETE SET NULL`);
+  await pool.query(`ALTER TABLE weekly_schedules ADD COLUMN IF NOT EXISTS inspection_id INTEGER REFERENCES inspections(id) ON DELETE CASCADE`);
 
   // Seed department→checklist-type mappings (idempotent via ON CONFLICT DO NOTHING)
   const seedWeekly = require('./seed-weekly');
@@ -727,6 +761,31 @@ app.post('/api/inspections', requireAuthAPI, requireInspectionWrite, async (req,
       }
     }
     await audit(req.session.userId, 'create_inspection', `جولة جديدة: ${title}`);
+
+    // Direction 2: auto-create linked schedule entry
+    if (dept_id && insp.type && insp.scheduled_date) {
+      try {
+        const dateStr = String(insp.scheduled_date).split('T')[0];
+        const [iy, imo, id_] = dateStr.split('-').map(Number);
+        const dow = new Date(iy, imo - 1, id_).getDay(); // 0=Sun … 6=Sat
+        if (dow <= 4) { // skip Friday(5) and Saturday(6)
+          const weekStart = computeWeekStart(dateStr);
+          const { rows: existing } = await pool.query(
+            "SELECT id FROM weekly_schedules WHERE inspection_id=$1", [insp.id]
+          );
+          if (!existing.length) {
+            await pool.query(
+              `INSERT INTO weekly_schedules(week_start_date,department_id,day_of_week,inspector_id,inspection_type,checklist_id,inspection_id,created_by)
+               VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+              [weekStart, dept_id, dow, inspector_id || req.session.userId, insp.type, template_id || null, insp.id, req.session.userId]
+            );
+          }
+        }
+      } catch (syncErr) {
+        console.error('Inspection→Schedule sync error:', syncErr.message);
+      }
+    }
+
     res.json(insp);
   } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ في الإنشاء' }); }
 });
@@ -1468,12 +1527,59 @@ app.post('/api/weekly-schedules', requireAuthAPI, requireChecklist, async (req, 
        VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
       [week_start_date, department_id, day_of_week, inspector_id || null, notes || null, checklist_id || null, inspection_type || null, req.session.userId]
     );
-    res.json(ws);
+
+    // Direction 1: auto-create linked inspection
+    let inspectionId = null;
+    if (inspection_type && department_id && inspector_id) {
+      try {
+        const [wy, wmo, wd] = week_start_date.split('-').map(Number);
+        const actualDate = new Date(wy, wmo - 1, wd + parseInt(day_of_week));
+        const scheduledDate = `${actualDate.getFullYear()}-${String(actualDate.getMonth()+1).padStart(2,'0')}-${String(actualDate.getDate()).padStart(2,'0')}`;
+        const title = await buildInspectionTitle(pool, inspection_type, department_id, scheduledDate);
+        const { rows: [insp] } = await pool.query(
+          "INSERT INTO inspections(title,type,dept_id,inspector_id,scheduled_date,status,template_id) VALUES($1,$2,$3,$4,$5,'scheduled',$6) RETURNING *",
+          [title, inspection_type, department_id, inspector_id, scheduledDate, checklist_id || null]
+        );
+        if (checklist_id) {
+          const { rows: items } = await pool.query(
+            "SELECT * FROM checklist_items WHERE template_id=$1 AND active=true ORDER BY order_num", [checklist_id]
+          );
+          for (const item of items) {
+            await pool.query(
+              "INSERT INTO inspection_items(inspection_id,item_text,gahar_ref,section_name) VALUES($1,$2,$3,$4)",
+              [insp.id, item.text, item.gahar_ref, item.section_name || 'عام']
+            );
+          }
+        }
+        await pool.query("UPDATE weekly_schedules SET inspection_id=$1 WHERE id=$2", [insp.id, ws.id]);
+        inspectionId = insp.id;
+        await audit(req.session.userId, 'create_inspection', `جولة جديدة من الجدول: ${title}`);
+      } catch (syncErr) {
+        console.error('Schedule→Inspection sync error:', syncErr.message);
+      }
+    }
+
+    res.json({ ...ws, inspection_id: inspectionId });
   } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
 });
 
 app.delete('/api/weekly-schedules/:id', requireAuthAPI, requireChecklist, async (req, res) => {
   try {
+    const { rows: [ws] } = await pool.query("SELECT inspection_id FROM weekly_schedules WHERE id=$1", [req.params.id]);
+    if (!ws) return res.status(404).json({ error: 'غير موجود' });
+
+    if (ws.inspection_id) {
+      const { rows: [insp] } = await pool.query("SELECT status FROM inspections WHERE id=$1", [ws.inspection_id]);
+      if (insp && (insp.status === 'in_progress' || insp.status === 'completed')) {
+        return res.status(400).json({ error: 'لا يمكن الحذف — الجولة جارية أو مكتملة' });
+      }
+      if (insp && insp.status === 'scheduled') {
+        // Deleting inspection cascades to delete this schedule entry too
+        await pool.query("DELETE FROM inspections WHERE id=$1", [ws.inspection_id]);
+        return res.json({ ok: true });
+      }
+    }
+
     await pool.query("DELETE FROM weekly_schedules WHERE id=$1", [req.params.id]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }

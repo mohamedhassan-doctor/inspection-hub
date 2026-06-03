@@ -288,6 +288,9 @@ function renderTable() {
         const badges = (typeBadge || checklistBadge)
           ? `<div class="sched-badges">${typeBadge}${checklistBadge}</div>`
           : '';
+        const inspLink = entry.inspection_id
+          ? `<div style="margin-top:6px"><a href="/inspections" style="font-size:11px;color:#0e7490;text-decoration:none;font-weight:500"><i class="fas fa-arrow-left" style="font-size:10px"></i> عرض الجولة</a></div>`
+          : '';
         return `<td>
           <div class="sched-cell-filled">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:4px">
@@ -298,6 +301,7 @@ function renderTable() {
             </div>
             ${entry.notes ? `<div class="sched-notes">${entry.notes}</div>` : ''}
             ${badges}
+            ${inspLink}
           </div>
         </td>`;
       } else {
