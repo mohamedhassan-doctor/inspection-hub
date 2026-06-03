@@ -188,7 +188,7 @@ async function loadInit() {
   [depts, users, checklists] = await Promise.all([
     api('GET', '/api/departments'),
     api('GET', '/api/users/dropdown').catch(() => []),
-    api('GET', '/api/checklists'),
+    api('GET', '/api/checklists').catch(() => []),
   ]);
   console.log('Templates loaded:', checklists.length);
   const ds = document.getElementById('f-dept');

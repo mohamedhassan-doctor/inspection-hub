@@ -570,16 +570,15 @@ app.get('/api/inspections', requireAuthAPI, async (req, res) => {
     if (isDH && !dId) return res.json([]);
 
     const { type, status, date } = req.query;
-    let { dept } = req.query;
-    // dept_head is always locked to their own department
-    if (isDH) dept = dId;
 
     let where = ['1=1'];
     const params = [];
-    if (dept) { params.push(dept); where.push(`i.dept_id=$${params.length}`); }
-    if (type) { params.push(type); where.push(`i.type=$${params.length}`); }
-    if (status) { params.push(status); where.push(`i.status=$${params.length}`); }
-    if (date) { params.push(date); where.push(`DATE_TRUNC('month',i.scheduled_date)=DATE_TRUNC('month',$${params.length}::date)`); }
+    // dept_head: use integer dId directly (same as /api/dashboard/recent)
+    const deptVal = isDH ? dId : req.query.dept;
+    if (deptVal) { params.push(deptVal); where.push(`i.dept_id=$${params.length}`); }
+    if (type)    { params.push(type);    where.push(`i.type=$${params.length}`); }
+    if (status)  { params.push(status);  where.push(`i.status=$${params.length}`); }
+    if (date)    { params.push(date);    where.push(`DATE_TRUNC('month',i.scheduled_date)=DATE_TRUNC('month',$${params.length}::date)`); }
 
     const { rows } = await pool.query(`
       SELECT i.*, d.name AS dept_name, u.name AS inspector_name
