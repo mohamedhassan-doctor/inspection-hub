@@ -45,6 +45,13 @@ async function initPage(activeLink) {
     if (data.role !== 'superadmin' && data.role !== 'quality_manager') {
       document.querySelectorAll('.dept-admin').forEach(el => el.style.display = 'none');
     }
+    // Hide checklists link for non-جودة users
+    const canSeeChecklists = data.role === 'superadmin' ||
+      (data.department_name && data.department_name.includes('جودة'));
+    if (!canSeeChecklists) {
+      document.querySelectorAll('a[href="/checklists"]').forEach(el => el.style.display = 'none');
+    }
+
     // Warn dept_head with no department assigned
     if (data.role === 'dept_head' && !data.department_id) {
       const main = document.querySelector('.main-content');
@@ -145,6 +152,8 @@ const roleLabels = {
   quality_manager: 'مدير الجودة',
   quality_staff: 'موظف الجودة',
   dept_head: 'رئيس قسم',
+  dept_admin: 'مدير إدارة',
+  dept_supervisor: 'مشرف قسم',
   inspector: 'مفتش',
 };
 

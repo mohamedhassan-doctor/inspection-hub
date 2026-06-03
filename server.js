@@ -70,6 +70,16 @@ const requireRole = (...roles) => (req, res, next) => {
   next();
 };
 
+const canAccessChecklists = (req) =>
+  req.session.role === 'superadmin' ||
+  (req.session.deptName && req.session.deptName.includes('جودة'));
+
+const requireChecklist = (req, res, next) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'غير مصرح' });
+  if (canAccessChecklists(req)) return next();
+  res.status(403).json({ error: 'الوصول لقوائم التدقيق متاح لموظفي قسم الجودة فقط' });
+};
+
 // ── HTML helper ──
 const serveHTML = (filename) => (req, res) => {
   fs.readFile(path.join(__dirname, 'public', filename), 'utf8', (err, data) => {
@@ -326,7 +336,10 @@ app.get('/login', (req, res) => {
 app.post('/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
   try {
-    const { rows } = await pool.query('SELECT * FROM users WHERE username=$1', [username]);
+    const { rows } = await pool.query(
+      'SELECT u.*, d.name AS dept_name FROM users u LEFT JOIN departments d ON d.id=u.department_id WHERE u.username=$1',
+      [username]
+    );
     if (!rows.length) return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
     const user = rows[0];
     const ok = await bcrypt.compare(password, user.password);
@@ -335,6 +348,7 @@ app.post('/login', loginLimiter, async (req, res) => {
     req.session.role = user.role;
     req.session.name = user.name;
     req.session.deptId = user.department_id || null;
+    req.session.deptName = user.dept_name || null;
     await audit(user.id, 'login', `دخول المستخدم ${user.username}`);
     res.json({ ok: true, role: user.role });
   } catch (e) {
@@ -352,7 +366,10 @@ app.get('/logout', (req, res) => {
 // ══════════════════════════════════
 app.get('/', requireAuth, serveHTML('index.html'));
 app.get('/inspections', requireAuth, serveHTML('inspections.html'));
-app.get('/checklists', requireAuth, serveHTML('checklists.html'));
+app.get('/checklists', requireAuth, (req, res) => {
+  if (!canAccessChecklists(req)) return res.redirect('/');
+  serveHTML('checklists.html')(req, res);
+});
 app.get('/findings', requireAuth, serveHTML('findings.html'));
 app.get('/capa', requireAuth, serveHTML('capa.html'));
 app.get('/reports', requireAuth, serveHTML('reports.html'));
@@ -363,7 +380,7 @@ app.get('/users', requireAuth, requireRole('superadmin'), serveHTML('users.html'
 //  API — SESSION
 // ══════════════════════════════════
 app.get('/api/session', requireAuthAPI, (req, res) => {
-  res.json({ id: req.session.userId, role: req.session.role, name: req.session.name, department_id: req.session.deptId });
+  res.json({ id: req.session.userId, role: req.session.role, name: req.session.name, department_id: req.session.deptId, department_name: req.session.deptName });
 });
 
 // ══════════════════════════════════
@@ -783,6 +800,9 @@ app.post('/api/inspections/:id/items/:itemId/photo', requireAuthAPI, async (req,
 // ══════════════════════════════════
 //  API — CHECKLISTS
 // ══════════════════════════════════
+
+// Guard: only superadmin or users in a قسم الجودة department
+app.use('/api/checklists', requireChecklist);
 
 app.get('/api/checklists/sample', requireAuthAPI, async (req, res) => {
   try {
