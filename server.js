@@ -455,6 +455,14 @@ app.get('/api/session', requireAuthAPI, (req, res) => {
   res.json({ id: req.session.userId, role: req.session.role, name: req.session.name, department_id: req.session.deptId, department_name: req.session.deptName });
 });
 
+// ── TEMP DEBUG — remove after use ──
+app.get('/api/debug/item-results', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT DISTINCT result FROM inspection_items LIMIT 20');
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ══════════════════════════════════
 //  API — DEPARTMENTS
 // ══════════════════════════════════
