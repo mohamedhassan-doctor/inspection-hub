@@ -197,6 +197,7 @@ async function initDB() {
   `);
 
   // Migrations for existing databases
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL`);
   await pool.query(`ALTER TABLE checklist_templates ADD COLUMN IF NOT EXISTS is_global BOOLEAN DEFAULT false`);
   await pool.query(`UPDATE checklist_templates SET is_global=true, dept_id=null WHERE name='قائمة تدقيق مكافحة العدوى' AND is_global=false`);
   await pool.query(`ALTER TABLE inspections ADD COLUMN IF NOT EXISTS template_id INTEGER REFERENCES checklist_templates(id) ON DELETE SET NULL`);
@@ -1183,18 +1184,23 @@ app.get('/api/users/dropdown', requireAuthAPI, async (req, res) => {
 
 app.get('/api/users', requireAuthAPI, requireRole('superadmin'), async (req, res) => {
   try {
-    const { rows } = await pool.query("SELECT id,name,username,role FROM users ORDER BY id");
+    const { rows } = await pool.query(`
+      SELECT u.id, u.name, u.username, u.role, u.department_id, d.name AS dept_name
+      FROM users u
+      LEFT JOIN departments d ON d.id = u.department_id
+      ORDER BY u.id
+    `);
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });
 
 app.post('/api/users', requireAuthAPI, requireRole('superadmin'), async (req, res) => {
   try {
-    const { name, username, password, role } = req.body;
+    const { name, username, password, role, department_id } = req.body;
     const hash = await bcrypt.hash(password, 10);
     const { rows: [u] } = await pool.query(
-      "INSERT INTO users(name,username,password,role) VALUES($1,$2,$3,$4) RETURNING id,name,username,role",
-      [name, username, hash, role]
+      "INSERT INTO users(name,username,password,role,department_id) VALUES($1,$2,$3,$4,$5) RETURNING id,name,username,role,department_id",
+      [name, username, hash, role, department_id || null]
     );
     await audit(req.session.userId, 'create_user', `مستخدم جديد: ${username}`);
     res.json(u);
@@ -1206,15 +1212,15 @@ app.post('/api/users', requireAuthAPI, requireRole('superadmin'), async (req, re
 
 app.put('/api/users/:id', requireAuthAPI, requireRole('superadmin'), async (req, res) => {
   try {
-    const { name, username, password, role } = req.body;
+    const { name, username, password, role, department_id } = req.body;
     let query, params;
     if (password) {
       const hash = await bcrypt.hash(password, 10);
-      query = "UPDATE users SET name=$1,username=$2,password=$3,role=$4 WHERE id=$5 RETURNING id,name,username,role";
-      params = [name, username, hash, role, req.params.id];
+      query = "UPDATE users SET name=$1,username=$2,password=$3,role=$4,department_id=$5 WHERE id=$6 RETURNING id,name,username,role,department_id";
+      params = [name, username, hash, role, department_id || null, req.params.id];
     } else {
-      query = "UPDATE users SET name=$1,username=$2,role=$3 WHERE id=$4 RETURNING id,name,username,role";
-      params = [name, username, role, req.params.id];
+      query = "UPDATE users SET name=$1,username=$2,role=$3,department_id=$4 WHERE id=$5 RETURNING id,name,username,role,department_id";
+      params = [name, username, role, department_id || null, req.params.id];
     }
     const { rows: [u] } = await pool.query(query, params);
     res.json(u);

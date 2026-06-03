@@ -40,7 +40,7 @@
           <table>
             <thead>
               <tr>
-                <th>#</th><th>الاسم الكامل</th><th>اسم المستخدم</th><th>الدور</th><th>الإجراءات</th>
+                <th>#</th><th>الاسم الكامل</th><th>اسم المستخدم</th><th>الدور</th><th>القسم</th><th>الإجراءات</th>
               </tr>
             </thead>
             <tbody id="users-tbody"></tbody>
@@ -83,6 +83,12 @@
             <option value="superadmin">مدير النظام</option>
           </select>
         </div>
+        <div class="form-group">
+          <label class="form-label">القسم</label>
+          <select id="u-dept" class="form-control">
+            <option value="">— بدون قسم —</option>
+          </select>
+        </div>
       </div>
       <div id="pass-hint" style="display:none;font-size:13px;color:#64748b;margin-top:-8px;margin-bottom:8px">
         اترك كلمة المرور فارغة للاحتفاظ بالكلمة الحالية
@@ -98,7 +104,16 @@
 <div id="toast-container"></div>
 <script src="/js/shared.js"></script>
 <script>
-let allUsers = [], myId = null;
+let allUsers = [], allDepts = [], myId = null;
+
+async function loadDepts() {
+  try {
+    allDepts = await api('GET', '/api/departments');
+    const sel = document.getElementById('u-dept');
+    sel.innerHTML = '<option value="">— بدون قسم —</option>' +
+      allDepts.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
+  } catch (e) { /* silent */ }
+}
 
 async function loadUsers() {
   try {
@@ -124,7 +139,7 @@ function renderRoleCards(users) {
 function renderTable(rows) {
   const tbody = document.getElementById('users-tbody');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><i class="fas fa-users"></i><p>لا يوجد مستخدمون</p></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><i class="fas fa-users"></i><p>لا يوجد مستخدمون</p></div></td></tr>';
     return;
   }
   tbody.innerHTML = rows.map(u => {
@@ -141,6 +156,7 @@ function renderTable(rows) {
       <td><strong>${u.name}</strong> ${isCurrent ? '<span class="badge badge-teal" style="font-size:11px">أنت</span>' : ''}</td>
       <td dir="ltr" style="text-align:right;font-family:monospace">${u.username}</td>
       <td><span class="badge ${roleColors[u.role]||'badge-secondary'}">${roleLabels[u.role]||u.role}</span></td>
+      <td>${u.dept_name ? `<span class="badge badge-secondary">${u.dept_name}</span>` : '<span style="color:#94a3b8">—</span>'}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-secondary btn-sm btn-icon" onclick="editUser(${u.id})" title="تعديل"><i class="fas fa-edit"></i></button>
         ${!isCurrent ? `<button class="btn btn-danger btn-sm btn-icon" onclick="deleteUser(${u.id},'${u.name}')" title="حذف"><i class="fas fa-trash"></i></button>` : ''}
@@ -156,6 +172,7 @@ function openCreate() {
   document.getElementById('u-username').value = '';
   document.getElementById('u-password').value = '';
   document.getElementById('u-role').value = 'inspector';
+  document.getElementById('u-dept').value = '';
   document.getElementById('pass-group').style.display = 'block';
   document.getElementById('pass-hint').style.display = 'none';
   document.getElementById('u-password').placeholder = '8 أحرف على الأقل';
@@ -171,6 +188,7 @@ function editUser(id) {
   document.getElementById('u-username').value = u.username;
   document.getElementById('u-password').value = '';
   document.getElementById('u-role').value = u.role;
+  document.getElementById('u-dept').value = u.department_id || '';
   document.getElementById('pass-group').style.display = 'block';
   document.getElementById('pass-hint').style.display = 'block';
   document.getElementById('u-password').placeholder = '(اتركه فارغاً للاحتفاظ بالكلمة الحالية)';
@@ -179,11 +197,13 @@ function editUser(id) {
 
 async function saveUser() {
   const id = document.getElementById('u-edit-id').value;
+  const deptVal = document.getElementById('u-dept').value;
   const body = {
     name: document.getElementById('u-name').value.trim(),
     username: document.getElementById('u-username').value.trim(),
     password: document.getElementById('u-password').value,
     role: document.getElementById('u-role').value,
+    department_id: deptVal ? parseInt(deptVal) : null,
   };
   if (!body.name || !body.username) return showToast('يرجى ملء الحقول المطلوبة', 'warning');
   if (!id && !body.password) return showToast('يرجى إدخال كلمة المرور للمستخدم الجديد', 'warning');
@@ -211,6 +231,7 @@ async function init() {
   await initPage('users');
   const sess = await api('GET', '/api/session');
   myId = sess.id;
+  await loadDepts();
   loadUsers();
 }
 
