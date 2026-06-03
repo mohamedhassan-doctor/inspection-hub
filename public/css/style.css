@@ -537,13 +537,28 @@ tr.overdue td { color: #7f1d1d; }
   body * { visibility: hidden; }
   #report-content, #report-content * { visibility: visible; }
   #report-content {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
+    position: relative;
     width: 100%;
     padding: 20px;
     background: #fff;
+    display: block;
+  }
+  #report-content, #report-content * {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+  .modal {
+    position: relative !important;
+    overflow: visible !important;
+  }
+  .modal-dialog {
+    max-width: 100% !important;
+    margin: 0 !important;
+  }
+  .modal-body {
+    overflow: visible !important;
+    max-height: none !important;
   }
   .badge { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .badge-danger { background: #fee2e2 !important; color: #dc2626 !important; }
