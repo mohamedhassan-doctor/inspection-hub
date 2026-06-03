@@ -45,6 +45,12 @@ async function initPage(activeLink) {
     if (data.role !== 'superadmin' && data.role !== 'quality_manager') {
       document.querySelectorAll('.dept-admin').forEach(el => el.style.display = 'none');
     }
+    // Hide quality-only elements for non-quality users
+    const isQuality = data.role === 'superadmin' ||
+      (data.department_name && data.department_name.includes('جودة'));
+    if (!isQuality) {
+      document.querySelectorAll('.quality-only').forEach(el => el.style.display = 'none');
+    }
     // Hide checklists link for non-جودة users
     const canSeeChecklists = data.role === 'superadmin' ||
       (data.department_name && data.department_name.includes('جودة'));

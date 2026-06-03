@@ -223,6 +223,30 @@ async function initDB() {
   await pool.query(`ALTER TABLE inspection_items ADD COLUMN IF NOT EXISTS section_name TEXT DEFAULT 'عام'`);
   await pool.query(`UPDATE inspection_items SET section_name='عام' WHERE section_name IS NULL`);
 
+  // Weekly schedule tables
+  await pool.query(`CREATE TABLE IF NOT EXISTS department_checklist_types (
+    id SERIAL PRIMARY KEY,
+    department_id INTEGER REFERENCES departments(id) ON DELETE CASCADE,
+    checklist_type TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(department_id, checklist_type)
+  )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS weekly_schedules (
+    id SERIAL PRIMARY KEY,
+    week_start_date DATE NOT NULL,
+    department_id INTEGER REFERENCES departments(id) ON DELETE CASCADE,
+    day_of_week INTEGER NOT NULL CHECK(day_of_week BETWEEN 0 AND 4),
+    inspector_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    notes TEXT,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+  )`);
+
+  // Seed department→checklist-type mappings (idempotent via ON CONFLICT DO NOTHING)
+  const seedWeekly = require('./seed-weekly');
+  await seedWeekly(pool);
+
   // Seed if empty
   const { rows: uRows } = await pool.query('SELECT COUNT(*) FROM users');
   if (parseInt(uRows[0].count) > 0) return;
@@ -381,6 +405,10 @@ app.get('/capa', requireAuth, serveHTML('capa.html'));
 app.get('/reports', requireAuth, serveHTML('reports.html'));
 app.get('/departments', requireAuth, requireRole('superadmin', 'quality_manager'), serveHTML('departments.html'));
 app.get('/users', requireAuth, requireRole('superadmin'), serveHTML('users.html'));
+app.get('/weekly-schedule', requireAuth, (req, res) => {
+  if (!canAccessChecklists(req)) return res.redirect('/');
+  serveHTML('weekly-schedule.html')(req, res);
+});
 
 // ══════════════════════════════════
 //  API — SESSION
@@ -458,6 +486,36 @@ app.delete('/api/departments/:id', requireAuthAPI, requireRole('superadmin', 'qu
     await pool.query("DELETE FROM departments WHERE id=$1", [req.params.id]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'خطأ في الحذف' }); }
+});
+
+// ══════════════════════════════════
+//  API — DEPARTMENT CHECKLIST TYPES
+// ══════════════════════════════════
+app.get('/api/departments/all-checklist-types', requireAuthAPI, requireChecklist, async (req, res) => {
+  try {
+    const [types, counts] = await Promise.all([
+      pool.query('SELECT department_id, checklist_type FROM department_checklist_types ORDER BY department_id, checklist_type'),
+      pool.query("SELECT dept_id, COUNT(*)::int AS cnt FROM checklist_templates WHERE (is_global IS NULL OR is_global=false) AND dept_id IS NOT NULL GROUP BY dept_id"),
+    ]);
+    const typeMap = {};
+    types.rows.forEach(r => {
+      if (!typeMap[r.department_id]) typeMap[r.department_id] = [];
+      typeMap[r.department_id].push(r.checklist_type);
+    });
+    const countMap = {};
+    counts.rows.forEach(r => { countMap[r.dept_id] = r.cnt; });
+    res.json({ typeMap, countMap });
+  } catch (e) { res.status(500).json({ error: 'خطأ' }); }
+});
+
+app.get('/api/departments/:id/checklists-preview', requireAuthAPI, requireChecklist, async (req, res) => {
+  try {
+    const [types, checklists] = await Promise.all([
+      pool.query('SELECT checklist_type FROM department_checklist_types WHERE department_id=$1 ORDER BY checklist_type', [req.params.id]),
+      pool.query("SELECT id, name FROM checklist_templates WHERE dept_id=$1 AND (is_global IS NULL OR is_global=false) ORDER BY name", [req.params.id]),
+    ]);
+    res.json({ grouped_by_type: types.rows, department_specific: checklists.rows });
+  } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });
 
 // ══════════════════════════════════
@@ -1314,6 +1372,14 @@ app.get('/api/users/dropdown', requireAuthAPI, async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });
 
+// All active users for inspector selection — quality dept only
+app.get('/api/users/inspectors', requireAuthAPI, requireChecklist, async (req, res) => {
+  try {
+    const { rows } = await pool.query("SELECT id, name, role FROM users ORDER BY name");
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: 'خطأ' }); }
+});
+
 app.get('/api/users', requireAuthAPI, requireRole('superadmin'), async (req, res) => {
   try {
     const { rows } = await pool.query(`
@@ -1366,6 +1432,46 @@ app.delete('/api/users/:id', requireAuthAPI, requireRole('superadmin'), async (r
   try {
     if (parseInt(req.params.id) === req.session.userId) return res.status(400).json({ error: 'لا يمكن حذف حسابك الحالي' });
     await pool.query("DELETE FROM users WHERE id=$1", [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: 'خطأ' }); }
+});
+
+// ══════════════════════════════════
+//  API — WEEKLY SCHEDULES
+// ══════════════════════════════════
+app.get('/api/weekly-schedules', requireAuthAPI, requireChecklist, async (req, res) => {
+  try {
+    const { week } = req.query;
+    if (!week) return res.status(400).json({ error: 'week parameter required' });
+    const { rows } = await pool.query(`
+      SELECT ws.*, d.name AS dept_name, u.name AS inspector_name
+      FROM weekly_schedules ws
+      LEFT JOIN departments d ON d.id = ws.department_id
+      LEFT JOIN users u ON u.id = ws.inspector_id
+      WHERE ws.week_start_date = $1
+      ORDER BY d.name, ws.day_of_week
+    `, [week]);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: 'خطأ' }); }
+});
+
+app.post('/api/weekly-schedules', requireAuthAPI, requireChecklist, async (req, res) => {
+  try {
+    const { week_start_date, department_id, day_of_week, inspector_id, notes } = req.body;
+    if (!week_start_date || !department_id || day_of_week == null)
+      return res.status(400).json({ error: 'يرجى ملء جميع الحقول المطلوبة' });
+    const { rows: [ws] } = await pool.query(
+      `INSERT INTO weekly_schedules(week_start_date,department_id,day_of_week,inspector_id,notes,created_by)
+       VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [week_start_date, department_id, day_of_week, inspector_id || null, notes || null, req.session.userId]
+    );
+    res.json(ws);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
+});
+
+app.delete('/api/weekly-schedules/:id', requireAuthAPI, requireChecklist, async (req, res) => {
+  try {
+    await pool.query("DELETE FROM weekly_schedules WHERE id=$1", [req.params.id]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });

@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>جدول المرور الأسبوعي | Inspection Hub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    #schedule-table td { vertical-align: top; min-width: 130px; }
+    #schedule-table th { text-align: center; }
+    #schedule-table td:first-child { font-weight: 600; min-width: 130px; vertical-align: middle; }
+    .sched-cell-filled {
+      background: #f0fdf4;
+      border-radius: 6px;
+      padding: 8px;
+      min-height: 60px;
+    }
+    .sched-cell-empty {
+      text-align: center;
+      padding: 12px 8px;
+    }
+    .sched-inspector { font-weight: 600; font-size: 13px; color: #0f172a; }
+    .sched-notes { font-size: 11px; color: #64748b; margin-top: 3px; }
+    .sched-badges { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
+    .sched-badge { font-size: 10px; padding: 2px 6px; border-radius: 99px; font-weight: 600; white-space: nowrap; }
+    .sched-count { font-size: 11px; color: #0e7490; margin-top: 4px; }
+    .week-nav { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+    .week-nav .week-label { font-size: 15px; font-weight: 600; color: #0f172a; flex: 1; text-align: center; }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand"><i class="fas fa-clipboard-check"></i><span>Inspection Hub</span></div>
+    <nav class="sidebar-nav">
+      <a href="/" class="nav-link" data-page="dashboard"><i class="fas fa-tachometer-alt"></i> لوحة التحكم</a>
+      <a href="/inspections" class="nav-link" data-page="inspections"><i class="fas fa-search"></i> الجولات</a>
+      <a href="/checklists" class="nav-link" data-page="checklists"><i class="fas fa-list-check"></i> قوائم التدقيق</a>
+      <a href="/findings" class="nav-link" data-page="findings"><i class="fas fa-exclamation-triangle"></i> المخالفات</a>
+      <a href="/capa" class="nav-link" data-page="capa"><i class="fas fa-tasks"></i> CAPA <span id="capa-badge" class="nav-badge" style="display:none">0</span></a>
+      <a href="/reports" class="nav-link" data-page="reports"><i class="fas fa-chart-bar"></i> التقارير</a>
+      <a href="/weekly-schedule" class="nav-link quality-only" data-page="weekly-schedule"><i class="fas fa-calendar-week"></i> جدول المرور</a>
+      <a href="/departments" class="nav-link dept-admin" data-page="departments"><i class="fas fa-building"></i> الأقسام 🏥</a>
+      <a href="/users" class="nav-link admin-only" data-page="users"><i class="fas fa-users"></i> المستخدمون</a>
+    </nav>
+    <div class="sidebar-footer"><span id="user-name"></span><a href="/logout" class="logout-btn"><i class="fas fa-sign-out-alt"></i></a></div>
+  </aside>
+
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-title">جدول المرور الأسبوعي <span>تخطيط جولات الرقابة للأسبوع الحالي</span></div>
+      <button class="btn btn-primary" onclick="openAddModal()"><i class="fas fa-plus"></i> أضف جولة</button>
+    </div>
+
+    <!-- Week navigation -->
+    <div class="week-nav">
+      <button class="btn btn-secondary btn-sm" onclick="changeWeek(-1)"><i class="fas fa-chevron-right"></i> السابق</button>
+      <span class="week-label" id="week-label">—</span>
+      <button class="btn btn-secondary btn-sm" onclick="changeWeek(1)">التالي <i class="fas fa-chevron-left"></i></button>
+    </div>
+
+    <!-- Schedule Table -->
+    <div class="card">
+      <div class="card-body" style="padding:0">
+        <div class="table-wrapper">
+          <table id="schedule-table">
+            <thead>
+              <tr>
+                <th style="text-align:right">القسم</th>
+                <th>الأحد</th>
+                <th>الاثنين</th>
+                <th>الثلاثاء</th>
+                <th>الأربعاء</th>
+                <th>الخميس</th>
+              </tr>
+            </thead>
+            <tbody id="schedule-tbody">
+              <tr><td colspan="6"><div class="empty-state"><i class="fas fa-calendar-week"></i><p>جاري التحميل...</p></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Add Schedule Modal -->
+<div class="modal-overlay" id="add-modal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span class="modal-title">إضافة جولة للجدول</span>
+      <button class="modal-close" onclick="closeModal('add-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row cols-2">
+        <div class="form-group">
+          <label class="form-label">القسم *</label>
+          <select id="m-dept" class="form-control" onchange="loadDeptPreview()">
+            <option value="">— اختر القسم —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">اليوم *</label>
+          <select id="m-day" class="form-control">
+            <option value="0">الأحد</option>
+            <option value="1">الاثنين</option>
+            <option value="2">الثلاثاء</option>
+            <option value="3">الأربعاء</option>
+            <option value="4">الخميس</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">المفتش *</label>
+          <select id="m-inspector" class="form-control">
+            <option value="">— اختر المفتش —</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">ملاحظات</label>
+          <input type="text" id="m-notes" class="form-control" placeholder="ملاحظات اختيارية...">
+        </div>
+      </div>
+
+      <!-- Dept preview -->
+      <div id="dept-preview" style="display:none;margin-top:12px;background:#f8fafc;border-radius:8px;padding:14px;border:1px solid #e2e8f0">
+        <div style="font-weight:600;margin-bottom:10px;color:#0e7490;font-size:14px"><i class="fas fa-eye"></i> معاينة قوائم القسم</div>
+        <div style="margin-bottom:12px">
+          <div style="font-size:12px;color:#64748b;margin-bottom:6px;font-weight:500">قوائم عامة (حسب النوع):</div>
+          <div id="preview-types" style="display:flex;flex-wrap:wrap;gap:5px"></div>
+        </div>
+        <div>
+          <div style="font-size:12px;color:#64748b;margin-bottom:6px;font-weight:500">قوائم خاصة بالقسم:</div>
+          <div id="preview-specific" style="font-size:13px;color:#475569"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('add-modal')">إلغاء</button>
+      <button class="btn btn-primary" onclick="saveSchedule()"><i class="fas fa-save"></i> حفظ</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/js/shared.js"></script>
+<script>
+let depts = [], inspectors = [], allSchedule = [];
+let deptTypeMap = {}, deptCountMap = {};
+let currentWeekStart = getWeekStart(new Date());
+
+const dayNames = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
+
+const typeColors = {
+  patient_safety:                  'badge-info',
+  infection_control:               'badge-warning',
+  fire_safety:                     'badge-danger',
+  medical_equipment:               'badge-teal',
+  surgical_safety:                 'badge-secondary',
+  lab_safety:                      'badge-success',
+  radiation_safety:                'badge-secondary',
+  medication:                      'badge-info',
+  environmental_safety:            'badge-success',
+  facilities_infrastructure:       'badge-secondary',
+  communication_safety:            'badge-info',
+  comprehensive_multidisciplinary: 'badge-teal',
+};
+
+function getWeekStart(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  d.setDate(d.getDate() - day);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString().split('T')[0];
+}
+
+function addDays(dateStr, n) {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + n);
+  return d.toISOString().split('T')[0];
+}
+
+function fmtShort(dateStr) {
+  return new Date(dateStr).toLocaleDateString('ar-EG', { day: 'numeric', month: 'short' });
+}
+
+function fmtWeekLabel(weekStart) {
+  const end = addDays(weekStart, 4);
+  return `الأسبوع: ${fmtShort(weekStart)} — ${fmtShort(end)} ${new Date(weekStart).getFullYear()}`;
+}
+
+function changeWeek(dir) {
+  currentWeekStart = addDays(currentWeekStart, dir * 7);
+  loadSchedule();
+}
+
+async function loadInit() {
+  [depts, inspectors] = await Promise.all([
+    api('GET', '/api/departments'),
+    api('GET', '/api/users/inspectors'),
+  ]);
+
+  // Pre-load checklist types for all departments
+  try {
+    const ct = await api('GET', '/api/departments/all-checklist-types');
+    deptTypeMap = ct.typeMap || {};
+    deptCountMap = ct.countMap || {};
+  } catch { /* optional */ }
+
+  // Populate dept dropdown in modal
+  const deptSel = document.getElementById('m-dept');
+  depts.forEach(d => {
+    const o = document.createElement('option');
+    o.value = d.id; o.textContent = d.name;
+    deptSel.appendChild(o);
+  });
+
+  // Populate inspector dropdown in modal
+  const inspSel = document.getElementById('m-inspector');
+  inspectors.forEach(u => {
+    const o = document.createElement('option');
+    o.value = u.id;
+    o.textContent = `${u.name} (${roleLabels[u.role] || u.role})`;
+    inspSel.appendChild(o);
+  });
+}
+
+async function loadSchedule() {
+  document.getElementById('week-label').textContent = fmtWeekLabel(currentWeekStart);
+  try {
+    allSchedule = await api('GET', `/api/weekly-schedules?week=${currentWeekStart}`);
+    renderTable();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function renderTable() {
+  const tbody = document.getElementById('schedule-tbody');
+  if (!depts.length) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><i class="fas fa-building"></i><p>لا توجد أقسام</p></div></td></tr>';
+    return;
+  }
+
+  // Build lookup: scheduleMap[deptId][dayOfWeek] = entry
+  const scheduleMap = {};
+  allSchedule.forEach(s => {
+    if (!scheduleMap[s.department_id]) scheduleMap[s.department_id] = {};
+    scheduleMap[s.department_id][s.day_of_week] = s;
+  });
+
+  // Day date labels for header
+  const dayDates = [0,1,2,3,4].map(d => fmtShort(addDays(currentWeekStart, d)));
+
+  // Update header with dates
+  const ths = document.querySelectorAll('#schedule-table thead th');
+  dayNames.forEach((name, i) => {
+    if (ths[i+1]) ths[i+1].innerHTML = `${name}<br><small style="font-weight:400;color:#94a3b8;font-size:11px">${dayDates[i]}</small>`;
+  });
+
+  tbody.innerHTML = depts.map(dept => {
+    const types = deptTypeMap[dept.id] || [];
+    const specCount = deptCountMap[dept.id] || 0;
+
+    const cells = [0,1,2,3,4].map(day => {
+      const entry = scheduleMap[dept.id]?.[day];
+      if (entry) {
+        const typeBadges = types.map(t =>
+          `<span class="badge sched-badge ${typeColors[t] || 'badge-secondary'}">${inspTypeLabels[t] || t}</span>`
+        ).join('');
+        return `<td>
+          <div class="sched-cell-filled">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:4px">
+              <span class="sched-inspector">${entry.inspector_name || '—'}</span>
+              <button class="btn btn-danger btn-sm btn-icon" style="padding:1px 5px;font-size:10px;min-height:0" onclick="deleteEntry(${entry.id})" title="حذف">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+            ${entry.notes ? `<div class="sched-notes">${entry.notes}</div>` : ''}
+            ${typeBadges ? `<div class="sched-badges">${typeBadges}</div>` : ''}
+            ${specCount ? `<div class="sched-count"><i class="fas fa-list-check"></i> ${specCount} قائمة خاصة</div>` : ''}
+          </div>
+        </td>`;
+      } else {
+        return `<td>
+          <div class="sched-cell-empty">
+            <button class="btn btn-secondary btn-sm" style="font-size:12px;padding:5px 10px" onclick="openAddModal(${dept.id},${day})">
+              <i class="fas fa-plus"></i>
+            </button>
+          </div>
+        </td>`;
+      }
+    }).join('');
+
+    return `<tr>
+      <td style="background:#fafafa">${dept.name}</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+}
+
+async function loadDeptPreview() {
+  const deptId = document.getElementById('m-dept').value;
+  const previewDiv = document.getElementById('dept-preview');
+  if (!deptId) { previewDiv.style.display = 'none'; return; }
+  try {
+    const d = await api('GET', `/api/departments/${deptId}/checklists-preview`);
+    document.getElementById('preview-types').innerHTML = d.grouped_by_type.length
+      ? d.grouped_by_type.map(t =>
+          `<span class="badge ${typeColors[t.checklist_type] || 'badge-secondary'}">${inspTypeLabels[t.checklist_type] || t.checklist_type}</span>`
+        ).join('')
+      : '<span style="color:#94a3b8;font-size:13px">لا توجد قوائم عامة محددة</span>';
+    document.getElementById('preview-specific').innerHTML = d.department_specific.length
+      ? d.department_specific.map(c =>
+          `<div style="padding:3px 0;border-bottom:1px solid #f1f5f9"><i class="fas fa-list-check" style="color:#0e7490;margin-left:4px"></i> ${c.name}</div>`
+        ).join('')
+      : '<span style="color:#94a3b8;font-size:13px">لا توجد قوائم خاصة بهذا القسم</span>';
+    previewDiv.style.display = 'block';
+  } catch { previewDiv.style.display = 'none'; }
+}
+
+function openAddModal(deptId, dayOfWeek) {
+  const deptSel = document.getElementById('m-dept');
+  const daySel = document.getElementById('m-day');
+  deptSel.value = deptId != null ? deptId : '';
+  daySel.value = dayOfWeek != null ? dayOfWeek : 0;
+  document.getElementById('m-inspector').value = '';
+  document.getElementById('m-notes').value = '';
+  document.getElementById('dept-preview').style.display = 'none';
+  if (deptId != null) loadDeptPreview();
+  openModal('add-modal');
+}
+
+async function saveSchedule() {
+  const deptId = document.getElementById('m-dept').value;
+  const dayOfWeek = document.getElementById('m-day').value;
+  const inspectorId = document.getElementById('m-inspector').value;
+  const notes = document.getElementById('m-notes').value.trim();
+  if (!deptId) return showToast('يرجى اختيار القسم', 'warning');
+  if (!inspectorId) return showToast('يرجى اختيار المفتش', 'warning');
+  try {
+    await api('POST', '/api/weekly-schedules', {
+      week_start_date: currentWeekStart,
+      department_id: parseInt(deptId),
+      day_of_week: parseInt(dayOfWeek),
+      inspector_id: parseInt(inspectorId),
+      notes: notes || null,
+    });
+    showToast('تمت الإضافة إلى الجدول', 'success');
+    closeModal('add-modal');
+    loadSchedule();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function deleteEntry(id) {
+  if (!confirmAction('هل تريد حذف هذه الجولة من الجدول؟')) return;
+  try {
+    await api('DELETE', `/api/weekly-schedules/${id}`);
+    showToast('تم الحذف', 'success');
+    loadSchedule();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+async function init() {
+  await initPage('weekly-schedule');
+  const isQuality = currentUser && (
+    currentUser.role === 'superadmin' ||
+    (currentUser.department_name && currentUser.department_name.includes('جودة'))
+  );
+  if (!isQuality) { window.location.href = '/'; return; }
+  await loadInit();
+  loadSchedule();
+}
+init();
+</script>
+</body>
+</html>
