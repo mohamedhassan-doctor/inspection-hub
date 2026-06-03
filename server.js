@@ -243,6 +243,7 @@ async function initDB() {
     updated_at TIMESTAMP DEFAULT NOW()
   )`);
   await pool.query(`ALTER TABLE weekly_schedules ADD COLUMN IF NOT EXISTS inspection_type TEXT DEFAULT null`);
+  await pool.query(`ALTER TABLE weekly_schedules ADD COLUMN IF NOT EXISTS checklist_id INTEGER REFERENCES checklist_templates(id) ON DELETE SET NULL`);
 
   // Seed department→checklist-type mappings (idempotent via ON CONFLICT DO NOTHING)
   const seedWeekly = require('./seed-weekly');
@@ -1445,10 +1446,11 @@ app.get('/api/weekly-schedules', requireAuthAPI, requireChecklist, async (req, r
     const { week } = req.query;
     if (!week) return res.status(400).json({ error: 'week parameter required' });
     const { rows } = await pool.query(`
-      SELECT ws.*, d.name AS dept_name, u.name AS inspector_name
+      SELECT ws.*, d.name AS dept_name, u.name AS inspector_name, ct.name AS checklist_name
       FROM weekly_schedules ws
       LEFT JOIN departments d ON d.id = ws.department_id
       LEFT JOIN users u ON u.id = ws.inspector_id
+      LEFT JOIN checklist_templates ct ON ct.id = ws.checklist_id
       WHERE ws.week_start_date = $1
       ORDER BY d.name, ws.day_of_week
     `, [week]);
@@ -1458,13 +1460,13 @@ app.get('/api/weekly-schedules', requireAuthAPI, requireChecklist, async (req, r
 
 app.post('/api/weekly-schedules', requireAuthAPI, requireChecklist, async (req, res) => {
   try {
-    const { week_start_date, department_id, day_of_week, inspector_id, notes, inspection_type } = req.body;
+    const { week_start_date, department_id, day_of_week, inspector_id, notes, checklist_id } = req.body;
     if (!week_start_date || !department_id || day_of_week == null)
       return res.status(400).json({ error: 'يرجى ملء جميع الحقول المطلوبة' });
     const { rows: [ws] } = await pool.query(
-      `INSERT INTO weekly_schedules(week_start_date,department_id,day_of_week,inspector_id,notes,inspection_type,created_by)
+      `INSERT INTO weekly_schedules(week_start_date,department_id,day_of_week,inspector_id,notes,checklist_id,created_by)
        VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [week_start_date, department_id, day_of_week, inspector_id || null, notes || null, inspection_type || null, req.session.userId]
+      [week_start_date, department_id, day_of_week, inspector_id || null, notes || null, checklist_id || null, req.session.userId]
     );
     res.json(ws);
   } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
