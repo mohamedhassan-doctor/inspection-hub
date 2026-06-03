@@ -178,6 +178,34 @@
   </div>
 </div>
 
+<!-- Quick Finding Modal -->
+<div class="modal-overlay" id="finding-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">إنشاء مخالفة</span>
+      <button class="modal-close" onclick="closeModal('finding-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">مستوى الخطورة *</label>
+        <select id="qf-severity" class="form-control">
+          <option value="critical">حرج 🔴</option>
+          <option value="major" selected>رئيسي 🟡</option>
+          <option value="observation">ملاحظة 🔵</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">وصف المخالفة *</label>
+        <textarea id="qf-description" class="form-control" rows="3" placeholder="وصف تفصيلي للمخالفة..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('finding-modal')">إلغاء</button>
+      <button class="btn btn-danger" onclick="saveQuickFinding()"><i class="fas fa-exclamation-triangle"></i> حفظ المخالفة</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast-container"></div>
 <script src="/js/shared.js"></script>
 <script>
@@ -588,21 +616,30 @@ async function saveNotes(itemId, notes) {
   } catch {}
 }
 
-async function quickFinding(itemId, itemText) {
-  const severity = prompt('مستوى الخطورة (critical / major / observation):', 'major');
-  if (!severity) return;
-  const description = prompt('وصف المخالفة:', itemText);
-  if (!description) return;
+let _qfItemId = null;
+
+function quickFinding(itemId, itemText) {
+  _qfItemId = itemId;
+  document.getElementById('qf-severity').value = 'major';
+  document.getElementById('qf-description').value = itemText || '';
+  openModal('finding-modal');
+}
+
+async function saveQuickFinding() {
+  const severity = document.getElementById('qf-severity').value;
+  const description = document.getElementById('qf-description').value.trim();
+  if (!description) return showToast('يرجى إدخال وصف المخالفة', 'warning');
   try {
     const insp = await api('GET', `/api/inspections/${currentExecId}`);
     await api('POST', '/api/findings', {
       inspection_id: currentExecId,
-      item_id: itemId,
+      item_id: _qfItemId,
       dept_id: insp.dept_id,
       severity,
       description,
     });
     showToast('تم إنشاء المخالفة', 'success');
+    closeModal('finding-modal');
   } catch (e) { showToast(e.message, 'error'); }
 }
 
