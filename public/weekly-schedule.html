@@ -111,6 +111,12 @@
           </select>
         </div>
         <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">نوع الجولة *</label>
+          <select id="m-type" class="form-control">
+            <option value="">— اختر نوع الجولة —</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
           <label class="form-label">قائمة التدقيق *</label>
           <select id="m-checklist" class="form-control">
             <option value="">— اختر قائمة التدقيق —</option>
@@ -142,6 +148,21 @@ let depts = [], inspectors = [], allSchedule = [];
 let currentWeekStart = getWeekStart(new Date());
 
 const dayNames = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
+
+const typeColors = {
+  patient_safety:                  'badge-info',
+  infection_control:               'badge-warning',
+  fire_safety:                     'badge-danger',
+  medical_equipment:               'badge-teal',
+  surgical_safety:                 'badge-secondary',
+  lab_safety:                      'badge-success',
+  radiation_safety:                'badge-secondary',
+  medication:                      'badge-info',
+  environmental_safety:            'badge-success',
+  facilities_infrastructure:       'badge-secondary',
+  communication_safety:            'badge-info',
+  comprehensive_multidisciplinary: 'badge-teal',
+};
 
 function getWeekStart(date) {
   const d = new Date(date);
@@ -197,6 +218,14 @@ async function loadInit() {
     deptSel.appendChild(o);
   });
 
+  // Populate inspection type dropdown in modal
+  const typeSel = document.getElementById('m-type');
+  Object.entries(inspTypeLabels).forEach(([val, label]) => {
+    const o = document.createElement('option');
+    o.value = val; o.textContent = label;
+    typeSel.appendChild(o);
+  });
+
   // Populate checklist dropdown in modal
   const clSel = document.getElementById('m-checklist');
   checklists.forEach(c => {
@@ -250,8 +279,14 @@ function renderTable() {
     const cells = [0,1,2,3,4].map(day => {
       const entry = scheduleMap[dept.id]?.[day];
       if (entry) {
+        const typeBadge = entry.inspection_type
+          ? `<span class="badge sched-badge ${typeColors[entry.inspection_type] || 'badge-secondary'}">${inspTypeLabels[entry.inspection_type] || entry.inspection_type}</span>`
+          : '';
         const checklistBadge = entry.checklist_name
-          ? `<div class="sched-badges"><span class="badge sched-badge badge-teal">${entry.checklist_name}</span></div>`
+          ? `<span class="badge sched-badge badge-teal">${entry.checklist_name}</span>`
+          : '';
+        const badges = (typeBadge || checklistBadge)
+          ? `<div class="sched-badges">${typeBadge}${checklistBadge}</div>`
           : '';
         return `<td>
           <div class="sched-cell-filled">
@@ -262,7 +297,7 @@ function renderTable() {
               </button>
             </div>
             ${entry.notes ? `<div class="sched-notes">${entry.notes}</div>` : ''}
-            ${checklistBadge}
+            ${badges}
           </div>
         </td>`;
       } else {
@@ -288,6 +323,7 @@ function openAddModal(deptId, dayOfWeek) {
   const daySel = document.getElementById('m-day');
   deptSel.value = deptId != null ? deptId : '';
   daySel.value = dayOfWeek != null ? dayOfWeek : 0;
+  document.getElementById('m-type').value = '';
   document.getElementById('m-checklist').value = '';
   document.getElementById('m-inspector').value = '';
   document.getElementById('m-notes').value = '';
@@ -297,10 +333,12 @@ function openAddModal(deptId, dayOfWeek) {
 async function saveSchedule() {
   const deptId = document.getElementById('m-dept').value;
   const dayOfWeek = document.getElementById('m-day').value;
+  const inspectionType = document.getElementById('m-type').value;
   const checklistId = document.getElementById('m-checklist').value;
   const inspectorId = document.getElementById('m-inspector').value;
   const notes = document.getElementById('m-notes').value.trim();
   if (!deptId) return showToast('يرجى اختيار القسم', 'warning');
+  if (!inspectionType) return showToast('يرجى اختيار نوع الجولة', 'warning');
   if (!checklistId) return showToast('يرجى اختيار قائمة التدقيق', 'warning');
   if (!inspectorId) return showToast('يرجى اختيار المفتش', 'warning');
   try {
@@ -308,6 +346,7 @@ async function saveSchedule() {
       week_start_date: currentWeekStart,
       department_id: parseInt(deptId),
       day_of_week: parseInt(dayOfWeek),
+      inspection_type: inspectionType,
       checklist_id: parseInt(checklistId),
       inspector_id: parseInt(inspectorId),
       notes: notes || null,

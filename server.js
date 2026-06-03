@@ -1460,13 +1460,13 @@ app.get('/api/weekly-schedules', requireAuthAPI, requireChecklist, async (req, r
 
 app.post('/api/weekly-schedules', requireAuthAPI, requireChecklist, async (req, res) => {
   try {
-    const { week_start_date, department_id, day_of_week, inspector_id, notes, checklist_id } = req.body;
+    const { week_start_date, department_id, day_of_week, inspector_id, notes, checklist_id, inspection_type } = req.body;
     if (!week_start_date || !department_id || day_of_week == null)
       return res.status(400).json({ error: 'يرجى ملء جميع الحقول المطلوبة' });
     const { rows: [ws] } = await pool.query(
-      `INSERT INTO weekly_schedules(week_start_date,department_id,day_of_week,inspector_id,notes,checklist_id,created_by)
-       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [week_start_date, department_id, day_of_week, inspector_id || null, notes || null, checklist_id || null, req.session.userId]
+      `INSERT INTO weekly_schedules(week_start_date,department_id,day_of_week,inspector_id,notes,checklist_id,inspection_type,created_by)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [week_start_date, department_id, day_of_week, inspector_id || null, notes || null, checklist_id || null, inspection_type || null, req.session.userId]
     );
     res.json(ws);
   } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
