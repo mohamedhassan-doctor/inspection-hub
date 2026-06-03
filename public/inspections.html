@@ -170,7 +170,7 @@
     <div class="modal-header">
       <span class="modal-title">تقرير الجولة</span>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-primary btn-sm" onclick="window.print()"><i class="fas fa-print"></i> طباعة / PDF</button>
+        <button class="btn btn-primary btn-sm" onclick="printReport()"><i class="fas fa-print"></i> طباعة / PDF</button>
         <button class="modal-close" onclick="closeModal('report-modal')">&times;</button>
       </div>
     </div>
@@ -757,6 +757,29 @@ async function openReport(id) {
     `;
     openModal('report-modal');
   } catch (e) { showToast(e.message, 'error'); }
+}
+
+function printReport() {
+  const content = document.getElementById('report-content').innerHTML;
+  const w = window.open('', '_blank');
+  w.document.write(`<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <title>تقرير الجولة</title>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    body { direction: rtl; font-family: 'Tajawal', sans-serif; margin: 20px; background: #fff; }
+    @media print { body { margin: 0; } }
+  </style>
+</head>
+<body>${content}</body>
+</html>`);
+  w.document.close();
+  w.focus();
+  w.print();
+  w.onafterprint = () => w.close();
 }
 
 function openModal(id) { document.getElementById(id).classList.add('open'); }
