@@ -72,6 +72,31 @@
       </div>
     </div>
 
+    <!-- Overdue inspections — quality roles only -->
+    <div class="card quality-only" id="overdue-inspections-card" style="margin-bottom:20px">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-exclamation-circle" style="color:#ef4444"></i> جولات متأخرة</div>
+      </div>
+      <div class="card-body" style="padding:0">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>المفتش</th>
+                <th>القسم</th>
+                <th>نوع الجولة</th>
+                <th>التاريخ المجدول</th>
+                <th>عدد أيام التأخير</th>
+              </tr>
+            </thead>
+            <tbody id="overdue-inspections-tbody">
+              <tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:20px">جاري التحميل...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- Recent rows -->
     <div class="cards-row cols-2">
       <!-- Recent Inspections -->
@@ -197,9 +222,31 @@ async function loadRecent() {
   }
 }
 
+async function loadOverdueInspections() {
+  const card = document.getElementById('overdue-inspections-card');
+  if (!card || card.style.display === 'none') return;
+  const tbody = document.getElementById('overdue-inspections-tbody');
+  try {
+    const rows = await api('GET', '/api/dashboard/overdue-inspections');
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#22c55e;padding:20px">✅ لا توجد جولات متأخرة</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(r => `<tr class="overdue">
+      <td>${r.inspector_name || '—'}</td>
+      <td>${r.dept_name || '—'}</td>
+      <td>${inspTypeLabels[r.type] || r.type || '—'}</td>
+      <td>${fmtDate(r.scheduled_date)}</td>
+      <td><span class="badge badge-danger">${r.days_overdue} يوم</span></td>
+    </tr>`).join('');
+  } catch (e) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:20px">—</td></tr>';
+  }
+}
+
 async function loadAll() {
   try {
-    await Promise.all([loadStats(), loadDepts(), loadRecent()]);
+    await Promise.all([loadStats(), loadDepts(), loadRecent(), loadOverdueInspections()]);
   } catch (e) {
     showToast(e.message, 'error');
   }

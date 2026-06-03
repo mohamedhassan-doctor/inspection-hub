@@ -630,6 +630,28 @@ app.get('/api/dashboard/departments', requireAuthAPI, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
 });
 
+app.get('/api/dashboard/overdue-inspections', requireAuthAPI, requireChecklist, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        i.id,
+        i.title,
+        i.type,
+        i.scheduled_date,
+        d.name AS dept_name,
+        u.name AS inspector_name,
+        (CURRENT_DATE - i.scheduled_date::date)::int AS days_overdue
+      FROM inspections i
+      LEFT JOIN departments d ON d.id = i.dept_id
+      LEFT JOIN users u ON u.id = i.inspector_id
+      WHERE i.status = 'scheduled'
+        AND i.scheduled_date < CURRENT_DATE
+      ORDER BY i.scheduled_date ASC
+    `);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: 'خطأ' }); }
+});
+
 app.get('/api/dashboard/recent', requireAuthAPI, async (req, res) => {
   try {
     const isDH = req.session.role === 'dept_head';
