@@ -455,16 +455,6 @@ app.get('/api/session', requireAuthAPI, (req, res) => {
   res.json({ id: req.session.userId, role: req.session.role, name: req.session.name, department_id: req.session.deptId, department_name: req.session.deptName });
 });
 
-// ── TEMP DEBUG — remove after use ──
-app.get('/api/debug/checklist-item-id', async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      "SELECT id, result, checklist_item_id FROM inspection_items WHERE result = 'non_compliant' LIMIT 5"
-    );
-    res.json(rows);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
 // ══════════════════════════════════
 //  API — DEPARTMENTS
 // ══════════════════════════════════
@@ -877,23 +867,28 @@ app.put('/api/inspections/:id/items/:itemId', requireAuthAPI, async (req, res) =
 
     let auto_finding = false;
 
-    if (result === 'non_compliant' && item.checklist_item_id) {
+    if (result === 'non_compliant') {
       try {
         const { rows: [insp] } = await pool.query(
           "SELECT dept_id FROM inspections WHERE id=$1", [req.params.id]
         );
         if (insp && insp.dept_id) {
+          // Match by checklist_item_id when available (new data), fall back to item_text (old data)
           const { rows: [{ count }] } = await pool.query(
             `SELECT COUNT(*)::int AS count
              FROM inspection_items ii
              JOIN inspections i ON i.id = ii.inspection_id
-             WHERE ii.checklist_item_id = $1
-               AND i.dept_id = $2
+             WHERE (
+               ($1::int IS NOT NULL AND ii.checklist_item_id = $1)
+               OR
+               ($1::int IS NULL AND ii.item_text = $2)
+             )
+               AND i.dept_id = $3
                AND ii.result = 'non_compliant'
                AND i.status = 'completed'
                AND i.scheduled_date >= NOW() - INTERVAL '3 months'
-               AND ii.inspection_id != $3`,
-            [item.checklist_item_id, insp.dept_id, req.params.id]
+               AND ii.inspection_id != $4`,
+            [item.checklist_item_id || null, item.item_text, insp.dept_id, req.params.id]
           );
           if (count > 0) {
             const { rows: existing } = await pool.query(
