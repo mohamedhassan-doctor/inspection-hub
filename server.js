@@ -455,6 +455,16 @@ app.get('/api/session', requireAuthAPI, (req, res) => {
   res.json({ id: req.session.userId, role: req.session.role, name: req.session.name, department_id: req.session.deptId, department_name: req.session.deptName });
 });
 
+// ── TEMP DEBUG — remove after use ──
+app.get('/api/debug/checklist-item-id', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT id, result, checklist_item_id FROM inspection_items WHERE result = 'non_compliant' LIMIT 5"
+    );
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ══════════════════════════════════
 //  API — DEPARTMENTS
 // ══════════════════════════════════
