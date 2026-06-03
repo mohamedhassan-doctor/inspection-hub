@@ -455,6 +455,18 @@ app.get('/api/session', requireAuthAPI, (req, res) => {
   res.json({ id: req.session.userId, role: req.session.role, name: req.session.name, department_id: req.session.deptId, department_name: req.session.deptName });
 });
 
+// ── TEMP DEBUG — remove after use ──
+app.get('/api/debug/schedule-sync', async (req, res) => {
+  try {
+    const { inspection_id } = req.query;
+    const q = inspection_id
+      ? `SELECT ws.*, i.scheduled_date, i.dept_id FROM weekly_schedules ws LEFT JOIN inspections i ON i.id = ws.inspection_id WHERE ws.inspection_id = ${parseInt(inspection_id)}`
+      : `SELECT ws.*, i.scheduled_date, i.dept_id FROM weekly_schedules ws LEFT JOIN inspections i ON i.id = ws.inspection_id ORDER BY ws.id DESC LIMIT 10`;
+    const { rows } = await pool.query(q);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ══════════════════════════════════
 //  API — DEPARTMENTS
 // ══════════════════════════════════
@@ -765,9 +777,11 @@ app.post('/api/inspections', requireAuthAPI, requireInspectionWrite, async (req,
     await audit(req.session.userId, 'create_inspection', `جولة جديدة: ${title}`);
 
     // Direction 2: auto-create linked schedule entry
-    if (dept_id && insp.type && insp.scheduled_date) {
+    if (dept_id && insp.type && scheduled_date) {
       try {
-        const dateStr = String(insp.scheduled_date).split('T')[0];
+        // Use scheduled_date from req.body (YYYY-MM-DD string), not insp.scheduled_date
+        // which is a JS Date object and produces wrong results with String()
+        const dateStr = scheduled_date.split('T')[0];
         const [iy, imo, id_] = dateStr.split('-').map(Number);
         const dow = new Date(iy, imo - 1, id_).getDay(); // 0=Sun … 6=Sat
         if (dow <= 4) { // skip Friday(5) and Saturday(6)
