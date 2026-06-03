@@ -588,7 +588,10 @@ function updateExecProgress(items) {
 async function setResult(itemId, result, btn) {
   try {
     const notesEl = document.getElementById(`notes-${itemId}`);
-    await api('PUT', `/api/inspections/${currentExecId}/items/${itemId}`, { result, notes: notesEl ? notesEl.value : '' });
+    const data = await api('PUT', `/api/inspections/${currentExecId}/items/${itemId}`, { result, notes: notesEl ? notesEl.value : '' });
+    if (data && data.auto_finding) {
+      showToast('⚠️ تم إنشاء مخالفة تلقائية — البند تكرر غير مطابق في نفس القسم خلال آخر 3 أشهر', 'warning');
+    }
     // Update UI
     const row = document.getElementById(`item-row-${itemId}`);
     row.className = `inspection-item-row result-${result}`;

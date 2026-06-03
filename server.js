@@ -278,6 +278,8 @@ async function initDB() {
   await pool.query(`ALTER TABLE weekly_schedules ADD COLUMN IF NOT EXISTS inspection_type TEXT DEFAULT null`);
   await pool.query(`ALTER TABLE weekly_schedules ADD COLUMN IF NOT EXISTS checklist_id INTEGER REFERENCES checklist_templates(id) ON DELETE SET NULL`);
   await pool.query(`ALTER TABLE weekly_schedules ADD COLUMN IF NOT EXISTS inspection_id INTEGER REFERENCES inspections(id) ON DELETE CASCADE`);
+  await pool.query(`ALTER TABLE inspection_items ADD COLUMN IF NOT EXISTS checklist_item_id INTEGER REFERENCES checklist_items(id) ON DELETE SET NULL`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_inspection_items_repeat_check ON inspection_items (checklist_item_id, result)`);
 
   // Seed department→checklist-type mappings (idempotent via ON CONFLICT DO NOTHING)
   const seedWeekly = require('./seed-weekly');
@@ -755,8 +757,8 @@ app.post('/api/inspections', requireAuthAPI, requireInspectionWrite, async (req,
       );
       for (const item of items) {
         await pool.query(
-          "INSERT INTO inspection_items(inspection_id,item_text,gahar_ref,section_name) VALUES($1,$2,$3,$4)",
-          [insp.id, item.text, item.gahar_ref, item.section_name || 'عام']
+          "INSERT INTO inspection_items(inspection_id,item_text,gahar_ref,section_name,checklist_item_id) VALUES($1,$2,$3,$4,$5)",
+          [insp.id, item.text, item.gahar_ref, item.section_name || 'عام', item.id]
         );
       }
     }
@@ -827,8 +829,8 @@ app.put('/api/inspections/:id', requireAuthAPI, requireInspectionWrite, async (r
       );
       for (const item of tmplItems) {
         await pool.query(
-          "INSERT INTO inspection_items(inspection_id,item_text,gahar_ref,section_name) VALUES($1,$2,$3,$4)",
-          [req.params.id, item.text, item.gahar_ref, item.section_name || 'عام']
+          "INSERT INTO inspection_items(inspection_id,item_text,gahar_ref,section_name,checklist_item_id) VALUES($1,$2,$3,$4,$5)",
+          [req.params.id, item.text, item.gahar_ref, item.section_name || 'عام', item.id]
         );
       }
     }
@@ -861,7 +863,49 @@ app.put('/api/inspections/:id/items/:itemId', requireAuthAPI, async (req, res) =
       "UPDATE inspection_items SET result=$1,notes=$2 WHERE id=$3 AND inspection_id=$4 RETURNING *",
       [result, notes, req.params.itemId, req.params.id]
     );
-    res.json(item);
+    if (!item) return res.status(404).json({ error: 'غير موجود' });
+
+    let auto_finding = false;
+
+    if (result === 'non_compliant' && item.checklist_item_id) {
+      try {
+        const { rows: [insp] } = await pool.query(
+          "SELECT dept_id FROM inspections WHERE id=$1", [req.params.id]
+        );
+        if (insp && insp.dept_id) {
+          const { rows: [{ count }] } = await pool.query(
+            `SELECT COUNT(*)::int AS count
+             FROM inspection_items ii
+             JOIN inspections i ON i.id = ii.inspection_id
+             WHERE ii.checklist_item_id = $1
+               AND i.dept_id = $2
+               AND ii.result = 'non_compliant'
+               AND i.status = 'completed'
+               AND i.scheduled_date >= NOW() - INTERVAL '3 months'
+               AND ii.inspection_id != $3`,
+            [item.checklist_item_id, insp.dept_id, req.params.id]
+          );
+          if (count > 0) {
+            const { rows: existing } = await pool.query(
+              "SELECT id FROM findings WHERE inspection_id=$1 AND item_id=$2",
+              [req.params.id, item.id]
+            );
+            if (!existing.length) {
+              await pool.query(
+                "INSERT INTO findings(inspection_id,item_id,dept_id,severity,description) VALUES($1,$2,$3,'observation',$4)",
+                [req.params.id, item.id, insp.dept_id,
+                 `بند متكرر غير مطابق: ${item.item_text} — تكرر في نفس القسم خلال آخر 3 أشهر`]
+              );
+              auto_finding = true;
+            }
+          }
+        }
+      } catch (repeatErr) {
+        console.error('Repeat check error:', repeatErr.message);
+      }
+    }
+
+    res.json({ ...item, auto_finding });
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });
 
@@ -1546,8 +1590,8 @@ app.post('/api/weekly-schedules', requireAuthAPI, requireChecklist, async (req, 
           );
           for (const item of items) {
             await pool.query(
-              "INSERT INTO inspection_items(inspection_id,item_text,gahar_ref,section_name) VALUES($1,$2,$3,$4)",
-              [insp.id, item.text, item.gahar_ref, item.section_name || 'عام']
+              "INSERT INTO inspection_items(inspection_id,item_text,gahar_ref,section_name,checklist_item_id) VALUES($1,$2,$3,$4,$5)",
+              [insp.id, item.text, item.gahar_ref, item.section_name || 'عام', item.id]
             );
           }
         }
