@@ -28,7 +28,7 @@
   <main class="main-content">
     <div class="page-header">
       <div class="page-title">المخالفات <span>رصد وإدارة المخالفات والملاحظات الرقابية</span></div>
-      <button class="btn btn-primary" onclick="openCreateFinding()"><i class="fas fa-plus"></i> مخالفة جديدة</button>
+      <button class="btn btn-primary" id="new-finding-btn" onclick="openCreateFinding()"><i class="fas fa-plus"></i> مخالفة جديدة</button>
     </div>
 
     <!-- Filters -->
@@ -142,6 +142,18 @@
 <script src="/js/shared.js"></script>
 <script>
 let depts = [], users = [], allFindings = [];
+let canWrite = false;
+
+function setupWriteAuth() {
+  canWrite = currentUser && (
+    currentUser.role === 'superadmin' ||
+    (currentUser.department_name && currentUser.department_name.includes('جودة'))
+  );
+  if (!canWrite) {
+    const btn = document.getElementById('new-finding-btn');
+    if (btn) btn.style.display = 'none';
+  }
+}
 
 async function loadInit() {
   [depts, users] = await Promise.all([
@@ -298,8 +310,13 @@ async function saveCapa() {
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
-initPage('findings');
-loadInit().then(loadFindings);
+async function init() {
+  await initPage('findings');
+  setupWriteAuth();
+  await loadInit();
+  loadFindings();
+}
+init();
 </script>
 </body>
 </html>

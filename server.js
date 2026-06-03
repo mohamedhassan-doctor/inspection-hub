@@ -1038,6 +1038,9 @@ app.get('/api/findings', requireAuthAPI, async (req, res) => {
 });
 
 app.post('/api/findings', requireAuthAPI, async (req, res) => {
+  const canWrite = req.session.role === 'superadmin' ||
+    (req.session.deptName && req.session.deptName.includes('جودة'));
+  if (!canWrite) return res.status(403).json({ error: 'ليس لديك صلاحية إضافة مخالفة' });
   try {
     const { inspection_id, item_id, dept_id, severity, description } = req.body;
     const { rows: [f] } = await pool.query(
