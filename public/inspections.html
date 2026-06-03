@@ -28,7 +28,7 @@
   <main class="main-content">
     <div class="page-header">
       <div class="page-title">الجولات الرقابية <span>إنشاء وتنفيذ ومتابعة الجولات</span></div>
-      <button class="btn btn-primary" onclick="openCreateModal()"><i class="fas fa-plus"></i> جولة جديدة</button>
+      <button class="btn btn-primary" id="new-insp-btn" onclick="openCreateModal()"><i class="fas fa-plus"></i> جولة جديدة</button>
     </div>
 
     <!-- Filters -->
@@ -183,6 +183,18 @@
 let depts = [], users = [], checklists = [];
 let currentExecId = null;
 let allInspections = [];
+let canWrite = false;
+
+function setupWriteAuth() {
+  canWrite = currentUser && (
+    currentUser.role === 'superadmin' ||
+    (currentUser.department_name && currentUser.department_name.includes('جودة'))
+  );
+  if (!canWrite) {
+    const btn = document.getElementById('new-insp-btn');
+    if (btn) btn.style.display = 'none';
+  }
+}
 
 async function loadInit() {
   [depts, users, checklists] = await Promise.all([
@@ -231,14 +243,19 @@ function renderTable(rows) {
   tbody.innerHTML = rows.map(r => {
     const sl = statusLabels[r.status] || { text: r.status, cls: 'badge-secondary' };
     const pct = r.compliance_score != null ? `<span class="badge ${complianceBadgeClass(r.compliance_score)}">${r.compliance_score}%</span>` : '—';
-    let actions = `<button class="btn btn-secondary btn-sm btn-icon" onclick="editInspection(${r.id})" title="تعديل"><i class="fas fa-edit"></i></button> `;
-    if (r.status === 'scheduled' || r.status === 'in_progress') {
+    let actions = '';
+    if (canWrite) {
+      actions += `<button class="btn btn-secondary btn-sm btn-icon" onclick="editInspection(${r.id})" title="تعديل"><i class="fas fa-edit"></i></button> `;
+    }
+    if (canWrite && (r.status === 'scheduled' || r.status === 'in_progress')) {
       actions += `<button class="btn btn-primary btn-sm btn-icon" onclick="openExec(${r.id})" title="تنفيذ"><i class="fas fa-play"></i></button> `;
     }
     if (r.status === 'completed') {
       actions += `<button class="btn btn-secondary btn-sm btn-icon" onclick="openReport(${r.id})" title="التقرير"><i class="fas fa-file-alt"></i></button> `;
     }
-    actions += `<button class="btn btn-danger btn-sm btn-icon" onclick="deleteInspection(${r.id})" title="حذف"><i class="fas fa-trash"></i></button>`;
+    if (canWrite) {
+      actions += `<button class="btn btn-danger btn-sm btn-icon" onclick="deleteInspection(${r.id})" title="حذف"><i class="fas fa-trash"></i></button>`;
+    }
     return `<tr>
       <td><strong>${r.title}</strong></td>
       <td><span class="badge badge-teal">${inspTypeLabels[r.type]||r.type}</span></td>
@@ -680,8 +697,13 @@ async function openReport(id) {
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 
-initPage('inspections');
-loadInit().then(loadInspections);
+async function init() {
+  await initPage('inspections');
+  setupWriteAuth();
+  await loadInit();
+  loadInspections();
+}
+init();
 </script>
 </body>
 </html>

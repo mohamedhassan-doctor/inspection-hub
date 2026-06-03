@@ -80,6 +80,12 @@ const requireChecklist = (req, res, next) => {
   res.status(403).json({ error: 'الوصول لقوائم التدقيق متاح لموظفي قسم الجودة فقط' });
 };
 
+const requireInspectionWrite = (req, res, next) => {
+  if (!req.session.userId) return res.status(401).json({ error: 'غير مصرح' });
+  if (canAccessChecklists(req)) return next();
+  res.status(403).json({ error: 'صلاحية إنشاء وتعديل الجولات متاحة لقسم الجودة والمدير فقط' });
+};
+
 // ── HTML helper ──
 const serveHTML = (filename) => (req, res) => {
   fs.readFile(path.join(__dirname, 'public', filename), 'utf8', (err, data) => {
@@ -633,7 +639,7 @@ app.get('/api/inspections/suggest-title', requireAuthAPI, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
 });
 
-app.post('/api/inspections', requireAuthAPI, async (req, res) => {
+app.post('/api/inspections', requireAuthAPI, requireInspectionWrite, async (req, res) => {
   try {
     const { title, type, inspector_id, scheduled_date, template_id } = req.body;
     let { dept_id } = req.body;
@@ -678,7 +684,7 @@ app.get('/api/inspections/:id', requireAuthAPI, async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });
 
-app.put('/api/inspections/:id', requireAuthAPI, async (req, res) => {
+app.put('/api/inspections/:id', requireAuthAPI, requireInspectionWrite, async (req, res) => {
   try {
     const { title, type, dept_id, inspector_id, scheduled_date, status, template_id } = req.body;
 
@@ -712,7 +718,7 @@ app.put('/api/inspections/:id', requireAuthAPI, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
 });
 
-app.delete('/api/inspections/:id', requireAuthAPI, requireRole('superadmin', 'quality_manager'), async (req, res) => {
+app.delete('/api/inspections/:id', requireAuthAPI, requireInspectionWrite, async (req, res) => {
   try {
     await pool.query("DELETE FROM inspections WHERE id=$1", [req.params.id]);
     res.json({ ok: true });
@@ -740,7 +746,7 @@ app.put('/api/inspections/:id/items/:itemId', requireAuthAPI, async (req, res) =
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });
 
-app.post('/api/inspections/:id/start', requireAuthAPI, async (req, res) => {
+app.post('/api/inspections/:id/start', requireAuthAPI, requireInspectionWrite, async (req, res) => {
   try {
     await pool.query("UPDATE inspections SET status='in_progress' WHERE id=$1 AND status='scheduled'", [req.params.id]);
     res.json({ ok: true });
