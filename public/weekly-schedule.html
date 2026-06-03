@@ -172,17 +172,25 @@ function getWeekStart(date) {
   const day = d.getDay();
   d.setDate(d.getDate() - day);
   d.setHours(0, 0, 0, 0);
-  return d.toISOString().split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
 }
 
 function addDays(dateStr, n) {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + n);
-  return d.toISOString().split('T')[0];
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, mo - 1, d);
+  date.setDate(date.getDate() + n);
+  const yr = date.getFullYear();
+  const mn = String(date.getMonth() + 1).padStart(2, '0');
+  const dy = String(date.getDate()).padStart(2, '0');
+  return `${yr}-${mn}-${dy}`;
 }
 
 function fmtShort(dateStr) {
-  return new Date(dateStr).toLocaleDateString('ar-EG', { day: 'numeric', month: 'short' });
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  return new Date(y, mo - 1, d).toLocaleDateString('ar-EG', { day: 'numeric', month: 'short' });
 }
 
 function fmtWeekLabel(weekStart) {
