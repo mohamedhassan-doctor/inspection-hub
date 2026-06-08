@@ -261,11 +261,12 @@ function renderTable() {
     return;
   }
 
-  // Build lookup: scheduleMap[deptId][dayOfWeek] = entry
+  // Build lookup: scheduleMap[deptId][dayOfWeek] = [entry, ...]
   const scheduleMap = {};
   allSchedule.forEach(s => {
     if (!scheduleMap[s.department_id]) scheduleMap[s.department_id] = {};
-    scheduleMap[s.department_id][s.day_of_week] = s;
+    if (!scheduleMap[s.department_id][s.day_of_week]) scheduleMap[s.department_id][s.day_of_week] = [];
+    scheduleMap[s.department_id][s.day_of_week].push(s);
   });
 
   // Day date labels for header
@@ -279,8 +280,8 @@ function renderTable() {
 
   tbody.innerHTML = depts.map(dept => {
     const cells = [0,1,2,3,4,5].map(day => {
-      const entry = scheduleMap[dept.id]?.[day];
-      if (entry) {
+      const entries = scheduleMap[dept.id]?.[day] || [];
+      const entryCards = entries.map(entry => {
         const typeBadge = entry.inspection_type
           ? `<span class="badge sched-badge ${typeColors[entry.inspection_type] || 'badge-secondary'}">${inspTypeLabels[entry.inspection_type] || entry.inspection_type}</span>`
           : '';
@@ -293,8 +294,7 @@ function renderTable() {
         const inspLink = entry.inspection_id
           ? `<div style="margin-top:6px"><a href="/inspections" style="font-size:11px;color:#0e7490;text-decoration:none;font-weight:500"><i class="fas fa-arrow-left" style="font-size:10px"></i> عرض الجولة</a></div>`
           : '';
-        return `<td>
-          <div class="sched-cell-filled">
+        return `<div class="sched-cell-filled" style="margin-bottom:6px">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:4px">
               <span class="sched-inspector">${entry.inspector_name || '—'}</span>
               <button class="btn btn-danger btn-sm btn-icon" style="padding:1px 5px;font-size:10px;min-height:0" onclick="deleteEntry(${entry.id})" title="حذف">
@@ -304,17 +304,16 @@ function renderTable() {
             ${entry.notes ? `<div class="sched-notes">${entry.notes}</div>` : ''}
             ${badges}
             ${inspLink}
-          </div>
-        </td>`;
-      } else {
-        return `<td>
-          <div class="sched-cell-empty">
+          </div>`;
+      }).join('');
+
+      const addBtn = `<div style="text-align:center;padding:${entries.length ? '2px 8px 4px' : '12px 8px'}">
             <button class="btn btn-secondary btn-sm" style="font-size:12px;padding:5px 10px" onclick="openAddModal(${dept.id},${day})">
               <i class="fas fa-plus"></i>
             </button>
-          </div>
-        </td>`;
-      }
+          </div>`;
+
+      return `<td style="padding:6px">${entryCards}${addBtn}</td>`;
     }).join('');
 
     return `<tr>
