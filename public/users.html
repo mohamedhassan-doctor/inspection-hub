@@ -41,7 +41,7 @@
           <table>
             <thead>
               <tr>
-                <th>#</th><th>الاسم الكامل</th><th>اسم المستخدم</th><th>الدور</th><th>القسم</th><th>الإجراءات</th>
+                <th class="col-hide-mobile">#</th><th>الاسم الكامل</th><th class="col-hide-mobile">اسم المستخدم</th><th>الدور</th><th>القسم</th><th>الإجراءات</th>
               </tr>
             </thead>
             <tbody id="users-tbody"></tbody>
@@ -157,9 +157,9 @@ function renderTable(rows) {
     };
     const isCurrent = u.id === myId;
     return `<tr ${isCurrent ? 'style="background:#ecfeff"' : ''}>
-      <td>${u.id}</td>
+      <td class="col-hide-mobile">${u.id}</td>
       <td><strong>${u.name}</strong> ${isCurrent ? '<span class="badge badge-teal" style="font-size:11px">أنت</span>' : ''}</td>
-      <td dir="ltr" style="text-align:right;font-family:monospace">${u.username}</td>
+      <td class="col-hide-mobile" dir="ltr" style="text-align:right;font-family:monospace">${u.username}</td>
       <td><span class="badge ${roleColors[u.role]||'badge-secondary'}">${roleLabels[u.role]||u.role}</span></td>
       <td>${u.dept_name ? `<span class="badge badge-secondary">${u.dept_name}</span>` : '<span style="color:#94a3b8">—</span>'}</td>
       <td style="white-space:nowrap">

@@ -63,7 +63,7 @@
                 <th>القسم</th>
                 <th>عدد الجولات</th>
                 <th>متوسط المطابقة</th>
-                <th style="min-width:120px">شريط التقدم</th>
+                <th class="col-hide-mobile" style="min-width:120px">شريط التقدم</th>
               </tr>
             </thead>
             <tbody id="dept-tbody"></tbody>
@@ -84,8 +84,8 @@
               <tr>
                 <th>المفتش</th>
                 <th>القسم</th>
-                <th>نوع الجولة</th>
-                <th>التاريخ المجدول</th>
+                <th class="col-hide-mobile">نوع الجولة</th>
+                <th class="col-hide-mobile">التاريخ المجدول</th>
                 <th>عدد أيام التأخير</th>
               </tr>
             </thead>
@@ -108,7 +108,7 @@
         <div class="card-body" style="padding:0">
           <div class="table-wrapper">
             <table>
-              <thead><tr><th>الجولة</th><th>القسم</th><th>الحالة</th><th>المطابقة</th></tr></thead>
+              <thead><tr><th>الجولة</th><th class="col-hide-mobile">القسم</th><th>الحالة</th><th>المطابقة</th></tr></thead>
               <tbody id="recent-inspections"></tbody>
             </table>
           </div>
@@ -124,7 +124,7 @@
         <div class="card-body" style="padding:0">
           <div class="table-wrapper">
             <table>
-              <thead><tr><th>الإجراء</th><th>القسم</th><th>الموعد</th><th>الخطورة</th></tr></thead>
+              <thead><tr><th>الإجراء</th><th class="col-hide-mobile">القسم</th><th>الموعد</th><th>الخطورة</th></tr></thead>
               <tbody id="overdue-capas"></tbody>
             </table>
           </div>
@@ -198,7 +198,7 @@ async function loadRecent() {
       const pct = r.compliance_score != null ? `<span class="badge ${complianceBadgeClass(r.compliance_score)}">${r.compliance_score}%</span>` : '—';
       return `<tr>
         <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.title}">${r.title}</td>
-        <td>${r.dept_name || '—'}</td>
+        <td class="col-hide-mobile">${r.dept_name || '—'}</td>
         <td><span class="badge ${sl.cls}">${sl.text}</span></td>
         <td>${pct}</td>
       </tr>`;
@@ -214,7 +214,7 @@ async function loadRecent() {
       const sevTxt = { critical: 'حرجة', major: 'رئيسية', observation: 'ملاحظة' };
       return `<tr class="overdue">
         <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.action}">${r.action}</td>
-        <td>${r.dept_name || '—'}</td>
+        <td class="col-hide-mobile">${r.dept_name || '—'}</td>
         <td>${fmtDate(r.due_date)}</td>
         <td><span class="badge ${sevMap[r.severity] || 'badge-secondary'}">${sevTxt[r.severity] || r.severity || '—'}</span></td>
       </tr>`;
@@ -235,8 +235,8 @@ async function loadOverdueInspections() {
     tbody.innerHTML = rows.map(r => `<tr class="overdue">
       <td>${r.inspector_name || '—'}</td>
       <td>${r.dept_name || '—'}</td>
-      <td>${inspTypeLabels[r.type] || r.type || '—'}</td>
-      <td>${fmtDate(r.scheduled_date)}</td>
+      <td class="col-hide-mobile">${inspTypeLabels[r.type] || r.type || '—'}</td>
+      <td class="col-hide-mobile">${fmtDate(r.scheduled_date)}</td>
       <td><span class="badge badge-danger">${r.days_overdue} يوم</span></td>
     </tr>`).join('');
   } catch (e) {

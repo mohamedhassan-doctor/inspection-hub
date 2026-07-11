@@ -82,7 +82,7 @@
       <div class="card-body" style="padding:0">
         <div class="table-wrapper">
           <table>
-            <thead><tr><th>القسم</th><th>متوسط المطابقة</th><th>عدد الجولات</th><th>شريط التقدم</th><th>التقييم</th></tr></thead>
+            <thead><tr><th>القسم</th><th>متوسط المطابقة</th><th class="col-hide-mobile">عدد الجولات</th><th class="col-hide-mobile">شريط التقدم</th><th>التقييم</th></tr></thead>
             <tbody id="compliance-tbody"></tbody>
           </table>
         </div>
@@ -136,8 +136,8 @@ async function loadCompliance() {
       return `<tr>
         <td><strong>${r.name}</strong></td>
         <td><span class="badge ${cls}">${pct}%</span></td>
-        <td>${r.count}</td>
-        <td><div class="progress-bar-wrap"><div class="progress-bar ${color}" style="width:${Math.min(pct,100)}%"></div></div></td>
+        <td class="col-hide-mobile">${r.count}</td>
+        <td class="col-hide-mobile"><div class="progress-bar-wrap"><div class="progress-bar ${color}" style="width:${Math.min(pct,100)}%"></div></div></td>
         <td style="color:${pct>=85?'#16a34a':pct>=70?'#d97706':'#dc2626'}">${rating}</td>
       </tr>`;
     }).join('');
