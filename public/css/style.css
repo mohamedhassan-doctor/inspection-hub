@@ -94,6 +94,7 @@ body {
 /* ── Main Content ── */
 .main-content {
   flex: 1;
+  min-width: 0;
   margin-right: 240px;
   padding: 28px;
   min-height: 100vh;
@@ -186,7 +187,7 @@ body {
 .card-body { padding: 16px 20px; }
 
 /* ── Tables ── */
-.table-wrapper { overflow-x: auto; }
+.table-wrapper { overflow-x: auto; width: 100%; display: block; }
 
 table {
   width: 100%;
