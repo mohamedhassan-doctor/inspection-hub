@@ -205,6 +205,9 @@ thead th {
   white-space: nowrap;
 }
 
+thead th.sortable { cursor: pointer; user-select: none; }
+thead th.sortable i { color: #94a3b8; font-size: 11px; margin-inline-start: 4px; }
+
 tbody td {
   padding: 11px 14px;
   border-bottom: 1px solid #f1f5f9;

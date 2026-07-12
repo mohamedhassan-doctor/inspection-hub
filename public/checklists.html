@@ -35,7 +35,40 @@
       </div>
     </div>
 
-    <div class="cards-row cols-2" id="checklists-grid" style="align-items:start"></div>
+    <!-- Filters -->
+    <div class="filter-bar">
+      <input type="text" id="cl-search" class="form-control search" placeholder="🔍 بحث باسم القائمة...">
+      <select id="cl-f-dept" class="form-control"><option value="">جميع الأقسام</option></select>
+      <select id="cl-f-type" class="form-control">
+        <option value="">عام وخاص</option>
+        <option value="global">عام</option>
+        <option value="dept">خاص</option>
+      </select>
+      <input type="number" id="cl-f-min" class="form-control" placeholder="من (عدد البنود)" style="width:120px;min-width:120px" min="0">
+      <input type="number" id="cl-f-max" class="form-control" placeholder="إلى (عدد البنود)" style="width:120px;min-width:120px" min="0">
+      <button class="btn btn-secondary" onclick="resetChecklistFilters()"><i class="fas fa-rotate-left"></i> إعادة تعيين الفلاتر</button>
+    </div>
+
+    <!-- Table -->
+    <div class="card">
+      <div class="card-body" style="padding:0">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th class="sortable" data-sort="name" onclick="sortChecklists('name')">اسم القائمة <i class="fas fa-sort"></i></th>
+                <th class="sortable" data-sort="dept" onclick="sortChecklists('dept')">القسم <i class="fas fa-sort"></i></th>
+                <th>النوع</th>
+                <th class="sortable" data-sort="count" onclick="sortChecklists('count')">عدد البنود <i class="fas fa-sort"></i></th>
+                <th class="col-hide-mobile">الوسوم</th>
+                <th>الإجراءات</th>
+              </tr>
+            </thead>
+            <tbody id="checklists-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -204,15 +237,41 @@
 let depts = [], checklists = [];
 let templateItemsCache = {};
 let pendingSections = {};
+let openItemsRows = new Set();
+let clSort = { key: null, dir: 1 };
 
 async function loadInit() {
   depts = await api('GET', '/api/departments');
   const sel = document.getElementById('tmpl-dept');
+  const fSel = document.getElementById('cl-f-dept');
   depts.forEach(d => {
     const o = document.createElement('option');
     o.value = d.id; o.textContent = d.name;
     sel.appendChild(o);
+    const fo = document.createElement('option');
+    fo.value = d.id; fo.textContent = d.name;
+    fSel.appendChild(fo);
   });
+  document.getElementById('cl-search').addEventListener('input', renderChecklistsTable);
+  document.getElementById('cl-f-dept').addEventListener('change', renderChecklistsTable);
+  document.getElementById('cl-f-type').addEventListener('change', renderChecklistsTable);
+  document.getElementById('cl-f-min').addEventListener('input', renderChecklistsTable);
+  document.getElementById('cl-f-max').addEventListener('input', renderChecklistsTable);
+}
+
+function resetChecklistFilters() {
+  document.getElementById('cl-search').value = '';
+  document.getElementById('cl-f-dept').value = '';
+  document.getElementById('cl-f-type').value = '';
+  document.getElementById('cl-f-min').value = '';
+  document.getElementById('cl-f-max').value = '';
+  renderChecklistsTable();
+}
+
+function sortChecklists(key) {
+  if (clSort.key === key) clSort.dir *= -1;
+  else { clSort.key = key; clSort.dir = 1; }
+  renderChecklistsTable();
 }
 
 function getSections(tmplId, items) {
@@ -224,55 +283,90 @@ function getSections(tmplId, items) {
   return all;
 }
 
-function renderChecklistCard(t) {
-  const globalBadge = t.is_global ? `<span class="badge badge-teal">عام 🌐</span>` : '';
+function renderChecklistRow(t) {
   const deptLabel = t.is_global ? 'جميع الأقسام' : (t.dept_name || 'عام');
-  const typeBadge = t.inspection_type ? `<span class="badge badge-info">${inspTypeLabels[t.inspection_type]||t.inspection_type}</span>` : '';
-  return `
-    <div class="card" style="margin-bottom:0">
-      <div class="card-header">
-        <div class="card-title"><i class="fas fa-list-check" style="color:#0e7490"></i> ${t.name}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-          ${globalBadge}
-          ${typeBadge}
-          <span class="badge badge-secondary">${deptLabel}</span>
-          <span class="badge badge-teal">${t.item_count} بنود</span>
-          <button class="btn btn-secondary btn-sm btn-icon" onclick="editTemplate(${t.id})" title="تعديل"><i class="fas fa-edit"></i></button>
-          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteTemplate(${t.id})" title="حذف"><i class="fas fa-trash"></i></button>
-        </div>
-      </div>
-      <div class="card-body" style="padding:0" id="items-${t.id}">
-        <div style="text-align:center;color:#94a3b8;padding:20px">
-          <button class="btn btn-secondary btn-sm" onclick="loadItems(${t.id})"><i class="fas fa-expand"></i> عرض البنود والمحاور</button>
-        </div>
-      </div>
-    </div>
-  `;
+  const typeLabel = t.is_global
+    ? `<span class="badge badge-teal">عام 🌐</span>`
+    : `<span class="badge badge-secondary">خاص</span>`;
+  const tags = t.inspection_type
+    ? `<span class="badge badge-info">${inspTypeLabels[t.inspection_type]||t.inspection_type}</span>`
+    : '—';
+  const isOpen = openItemsRows.has(t.id);
+  const rows = [`
+    <tr>
+      <td>${t.name}</td>
+      <td>${deptLabel}</td>
+      <td>${typeLabel}</td>
+      <td>${t.item_count}</td>
+      <td class="col-hide-mobile">${tags}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-secondary btn-sm btn-icon" onclick="toggleItemsRow(${t.id})" title="عرض البنود والمحاور"><i class="fas fa-${isOpen?'compress':'expand'}"></i></button>
+        <button class="btn btn-secondary btn-sm btn-icon" onclick="editTemplate(${t.id})" title="تعديل"><i class="fas fa-edit"></i></button>
+        <button class="btn btn-danger btn-sm btn-icon" onclick="deleteTemplate(${t.id})" title="حذف"><i class="fas fa-trash"></i></button>
+      </td>
+    </tr>`];
+  if (isOpen) {
+    rows.push(`<tr><td colspan="6" style="padding:0;background:#f8fafc"><div id="items-${t.id}"></div></td></tr>`);
+  }
+  return rows.join('');
+}
+
+function toggleItemsRow(tmplId) {
+  if (openItemsRows.has(tmplId)) {
+    openItemsRows.delete(tmplId);
+    renderChecklistsTable();
+  } else {
+    openItemsRows.add(tmplId);
+    renderChecklistsTable();
+    loadItems(tmplId);
+  }
+}
+
+function getFilteredSortedChecklists() {
+  const q = document.getElementById('cl-search').value.trim().toLowerCase();
+  const fDept = document.getElementById('cl-f-dept').value;
+  const fType = document.getElementById('cl-f-type').value;
+  const fMin = document.getElementById('cl-f-min').value;
+  const fMax = document.getElementById('cl-f-max').value;
+
+  let list = checklists.filter(t => {
+    if (q && !t.name.toLowerCase().includes(q)) return false;
+    if (fDept && String(t.dept_id) !== String(fDept)) return false;
+    if (fType === 'global' && !t.is_global) return false;
+    if (fType === 'dept' && t.is_global) return false;
+    if (fMin !== '' && t.item_count < Number(fMin)) return false;
+    if (fMax !== '' && t.item_count > Number(fMax)) return false;
+    return true;
+  });
+
+  if (clSort.key) {
+    list = [...list].sort((a, b) => {
+      let av, bv;
+      if (clSort.key === 'name') { av = a.name; bv = b.name; }
+      else if (clSort.key === 'dept') { av = a.is_global ? 'جميع الأقسام' : (a.dept_name||''); bv = b.is_global ? 'جميع الأقسام' : (b.dept_name||''); }
+      else { av = a.item_count; bv = b.item_count; }
+      if (av < bv) return -1 * clSort.dir;
+      if (av > bv) return 1 * clSort.dir;
+      return 0;
+    });
+  }
+  return list;
+}
+
+function renderChecklistsTable() {
+  const tbody = document.getElementById('checklists-tbody');
+  const list = getFilteredSortedChecklists();
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state" style="text-align:center;padding:24px"><i class="fas fa-list-check"></i><p>لا توجد قوائم تدقيق مطابقة</p></td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(t => renderChecklistRow(t)).join('');
+  list.forEach(t => { if (openItemsRows.has(t.id)) renderTemplateItems(t.id); });
 }
 
 async function loadChecklists() {
   checklists = await api('GET', '/api/checklists');
-  const grid = document.getElementById('checklists-grid');
-  if (!checklists.length) {
-    grid.innerHTML = '<div class="card" style="grid-column:1/-1"><div class="card-body empty-state"><i class="fas fa-list-check"></i><p>لا توجد قوائم تدقيق بعد</p></div></div>';
-    return;
-  }
-  const globalList = checklists.filter(t => t.is_global);
-  const regularList = checklists.filter(t => !t.is_global);
-  let html = '';
-  if (globalList.length) {
-    html += `<div style="grid-column:1/-1;padding:10px 0 6px;border-bottom:2px solid #0e7490;margin-bottom:4px">
-      <h3 style="color:#0e7490;font-size:15px;font-weight:700"><i class="fas fa-globe"></i> القوائم العامة</h3>
-    </div>`;
-    html += globalList.map(t => renderChecklistCard(t)).join('');
-  }
-  if (regularList.length) {
-    html += `<div style="grid-column:1/-1;padding:10px 0 6px;border-bottom:2px solid #e2e8f0;margin-bottom:4px${globalList.length ? ';margin-top:20px' : ''}">
-      <h3 style="color:#475569;font-size:15px;font-weight:700"><i class="fas fa-building"></i> قوائم الأقسام</h3>
-    </div>`;
-    html += regularList.map(t => renderChecklistCard(t)).join('');
-  }
-  grid.innerHTML = html;
+  renderChecklistsTable();
 }
 
 async function loadItems(tmplId) {
