@@ -1,3 +1,12 @@
+// ── PWA install support ──
+(function () {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js').catch(function () {});
+    });
+  }
+})();
+
 // ── Toast ──
 function showToast(msg, type = 'info') {
   const c = document.getElementById('toast-container');
