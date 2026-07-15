@@ -67,17 +67,6 @@ async function initPage(activeLink) {
       document.querySelectorAll('a[href="/checklists"]').forEach(el => el.style.display = 'none');
     }
 
-    // Warn dept_head with no department assigned
-    if (data.role === 'dept_head' && !data.department_id) {
-      const main = document.querySelector('.main-content');
-      if (main) {
-        const warn = document.createElement('div');
-        warn.style.cssText = 'background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:14px 18px;margin-bottom:20px;color:#92400e;display:flex;align-items:center;gap:12px;font-size:14px;font-family:Tajawal,sans-serif';
-        warn.innerHTML = '<i class="fas fa-exclamation-triangle" style="font-size:18px;color:#d97706;flex-shrink:0"></i><span>لم يتم تحديد قسم لهذا المستخدم، يرجى التواصل مع المدير</span>';
-        main.prepend(warn);
-      }
-    }
-
     // CAPA badge update
     updateCapaBadge();
     setInterval(updateCapaBadge, 5 * 60 * 1000);
@@ -166,10 +155,6 @@ const roleLabels = {
   superadmin: 'مدير النظام',
   quality_manager: 'مدير الجودة',
   quality_staff: 'موظف الجودة',
-  dept_head: 'رئيس قسم',
-  dept_admin: 'مدير إدارة',
-  dept_supervisor: 'مشرف قسم',
-  inspector: 'مفتش',
 };
 
 function complianceColor(pct) {

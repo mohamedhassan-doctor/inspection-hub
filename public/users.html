@@ -85,11 +85,7 @@
         <div class="form-group">
           <label class="form-label">الدور *</label>
           <select id="u-role" class="form-control">
-            <option value="inspector">مفتش</option>
             <option value="quality_staff">موظف الجودة</option>
-            <option value="dept_head">رئيس قسم</option>
-            <option value="dept_admin">مدير إدارة</option>
-            <option value="dept_supervisor">مشرف قسم</option>
             <option value="quality_manager">مدير الجودة</option>
             <option value="superadmin">مدير النظام</option>
           </select>
@@ -135,9 +131,9 @@ async function loadUsers() {
 }
 
 function renderRoleCards(users) {
-  const roles = { superadmin: 0, quality_manager: 0, quality_staff: 0, dept_head: 0, dept_admin: 0, dept_supervisor: 0, inspector: 0 };
+  const roles = { superadmin: 0, quality_manager: 0, quality_staff: 0 };
   users.forEach(u => { if (roles[u.role] !== undefined) roles[u.role]++; });
-  const icons = { superadmin: 'fa-crown', quality_manager: 'fa-user-shield', quality_staff: 'fa-user-check', dept_head: 'fa-hospital-user', dept_admin: 'fa-user-tie', dept_supervisor: 'fa-user-cog', inspector: 'fa-search' };
+  const icons = { superadmin: 'fa-crown', quality_manager: 'fa-user-shield', quality_staff: 'fa-user-check' };
   const el = document.getElementById('role-cards');
   el.innerHTML = Object.entries(roles).map(([role, count]) => `
     <div class="stat-card" style="padding:14px 16px">
@@ -158,10 +154,6 @@ function renderTable(rows) {
       superadmin: 'badge-danger',
       quality_manager: 'badge-teal',
       quality_staff: 'badge-info',
-      dept_head: 'badge-warning',
-      dept_admin: 'badge-warning',
-      dept_supervisor: 'badge-secondary',
-      inspector: 'badge-secondary',
     };
     const isCurrent = u.id === myId;
     return `<tr ${isCurrent ? 'style="background:#ecfeff"' : ''}>
@@ -184,7 +176,7 @@ function openCreate() {
   document.getElementById('u-name').value = '';
   document.getElementById('u-username').value = '';
   document.getElementById('u-password').value = '';
-  document.getElementById('u-role').value = 'inspector';
+  document.getElementById('u-role').value = 'quality_staff';
   document.getElementById('u-dept').value = '';
   document.getElementById('pass-group').style.display = 'block';
   document.getElementById('pass-hint').style.display = 'none';
