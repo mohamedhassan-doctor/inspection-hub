@@ -210,6 +210,83 @@ async function capaOnTimeByDept(from, to) {
   return rows;
 }
 
+// ── Monthly trend variants of the same three KPIs (used by /api/reports/department-performance-trend) ──
+async function complianceTrendByDept(from, to) {
+  const { rows } = await pool.query(`
+    WITH scores AS (
+      SELECT i.dept_id, i.id, TO_CHAR(DATE_TRUNC('month', i.scheduled_date), 'YYYY-MM') AS month,
+        CASE WHEN COUNT(CASE WHEN ii.result IS NOT NULL AND ii.result!='not_applicable' THEN 1 END)>0
+          THEN ROUND(COUNT(CASE WHEN ii.result='compliant' THEN 1 END)*100.0/
+            NULLIF(COUNT(CASE WHEN ii.result IS NOT NULL AND ii.result!='not_applicable' THEN 1 END),0),1)
+          ELSE 0 END AS compliance
+      FROM inspections i
+      LEFT JOIN inspection_items ii ON ii.inspection_id=i.id
+      WHERE i.status='completed' AND i.scheduled_date >= $1 AND i.scheduled_date <= $2
+      GROUP BY i.dept_id, i.id
+    )
+    SELECT s.dept_id, COALESCE(d.name, 'غير محدد') AS dept_name, s.month,
+      ROUND(AVG(s.compliance),1) AS avg_compliance, COUNT(s.id)::int AS count
+    FROM scores s
+    LEFT JOIN departments d ON d.id = s.dept_id
+    GROUP BY s.dept_id, d.name, s.month
+    ORDER BY dept_name, s.month
+  `, [from, to]);
+  return rows;
+}
+
+async function recurringFindingsTrendByDept(from, to) {
+  const { rows } = await pool.query(`
+    WITH bad_items AS (
+      SELECT ii.id, i.dept_id, i.scheduled_date,
+             TO_CHAR(DATE_TRUNC('month', i.scheduled_date), 'YYYY-MM') AS month,
+             COALESCE(ii.checklist_item_id::text, ii.item_text) AS item_key
+      FROM inspection_items ii
+      JOIN inspections i ON i.id = ii.inspection_id
+      WHERE i.status='completed' AND ii.result IN ('non_compliant','needs_improvement')
+        AND i.scheduled_date >= $1 AND i.scheduled_date <= $2
+    ),
+    recurring AS (
+      SELECT DISTINCT a.dept_id, a.item_key, a.month
+      FROM bad_items a
+      JOIN bad_items b ON b.dept_id IS NOT DISTINCT FROM a.dept_id
+                       AND b.item_key = a.item_key
+                       AND b.id <> a.id
+                       AND ABS(a.scheduled_date - b.scheduled_date) <= 90
+    )
+    SELECT
+      bi.dept_id,
+      COALESCE(d.name, 'غير محدد') AS dept_name,
+      bi.month,
+      COUNT(DISTINCT bi.item_key)::int AS total_items,
+      COUNT(DISTINCT r.item_key)::int AS recurring_items,
+      ROUND(COUNT(DISTINCT r.item_key)*100.0/COUNT(DISTINCT bi.item_key),1) AS recurring_pct
+    FROM bad_items bi
+    LEFT JOIN departments d ON d.id = bi.dept_id
+    LEFT JOIN recurring r ON r.dept_id IS NOT DISTINCT FROM bi.dept_id AND r.item_key = bi.item_key AND r.month = bi.month
+    GROUP BY bi.dept_id, d.name, bi.month
+    ORDER BY dept_name, bi.month
+  `, [from, to]);
+  return rows;
+}
+
+async function capaOnTimeTrendByDept(from, to) {
+  const { rows } = await pool.query(`
+    SELECT
+      c.dept_id,
+      COALESCE(d.name, 'غير محدد') AS dept_name,
+      TO_CHAR(DATE_TRUNC('month', c.closed_at), 'YYYY-MM') AS month,
+      COUNT(*)::int AS closed_count,
+      COUNT(CASE WHEN c.closed_at::date <= c.due_date THEN 1 END)::int AS closed_on_time,
+      ROUND(COUNT(CASE WHEN c.closed_at::date <= c.due_date THEN 1 END)*100.0/COUNT(*),1) AS ontime_pct
+    FROM capas c
+    LEFT JOIN departments d ON d.id = c.dept_id
+    WHERE c.status='closed' AND c.closed_at::date >= $1 AND c.closed_at::date <= $2
+    GROUP BY c.dept_id, d.name, month
+    ORDER BY dept_name, month
+  `, [from, to]);
+  return rows;
+}
+
 // ── Sync helpers ──
 const _typeLabels = {
   environmental_safety:'السلامة البيئية', patient_safety:'سلامة المريض',
@@ -566,6 +643,10 @@ app.get('/users', requireAuth, requireRole('superadmin'), serveHTML('users.html'
 app.get('/weekly-schedule', requireAuth, (req, res) => {
   if (!canAccessChecklists(req)) return res.redirect('/');
   serveHTML('weekly-schedule.html')(req, res);
+});
+app.get('/department-performance', requireAuth, (req, res) => {
+  if (!canAccessChecklists(req)) return res.redirect('/');
+  serveHTML('department-performance.html')(req, res);
 });
 
 // ══════════════════════════════════
@@ -1532,6 +1613,69 @@ app.get('/api/reports/department-performance', requireAuthAPI, async (req, res) 
         closed_count: r.closed_count, closed_on_time: r.closed_on_time,
         ontime_pct: parseFloat(r.ontime_pct) || 0,
       };
+    });
+
+    res.json([...map.values()]);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
+});
+
+app.get('/api/reports/department-performance-trend', requireAuthAPI, async (req, res) => {
+  try {
+    let { from, to } = req.query;
+    if (!to) to = new Date().toISOString().slice(0, 10);
+    if (!from) {
+      const toDate = new Date(to);
+      const fromDate = new Date(toDate.getFullYear(), toDate.getMonth() - 5, 1);
+      from = fromDate.toISOString().slice(0, 10);
+    }
+
+    // Full list of YYYY-MM months in range, so months with no data can be reported as null (not a misleading 0)
+    const months = [];
+    {
+      const [fy, fm] = from.split('-').map(Number);
+      const [ty, tm] = to.split('-').map(Number);
+      let y = fy, m = fm;
+      while (y < ty || (y === ty && m <= tm)) {
+        months.push(`${y}-${String(m).padStart(2, '0')}`);
+        m++; if (m > 12) { m = 1; y++; }
+      }
+    }
+    const monthIndex = new Map(months.map((mo, i) => [mo, i]));
+
+    const [compliance, recurring, capaOnTime] = await Promise.all([
+      complianceTrendByDept(from, to),
+      recurringFindingsTrendByDept(from, to),
+      capaOnTimeTrendByDept(from, to),
+    ]);
+
+    const map = new Map();
+    const keyOf = (id) => (id === null || id === undefined ? 'null' : String(id));
+    const ensure = (id, name) => {
+      const k = keyOf(id);
+      if (!map.has(k)) {
+        map.set(k, {
+          dept_id: id ?? null,
+          dept_name: name,
+          trend: months.map(month => ({ month, compliance_pct: null, recurring_pct: null, capa_ontime_pct: null })),
+        });
+      }
+      return map.get(k);
+    };
+
+    compliance.forEach(r => {
+      const row = ensure(r.dept_id, r.dept_name);
+      const idx = monthIndex.get(r.month);
+      if (idx !== undefined) row.trend[idx].compliance_pct = parseFloat(r.avg_compliance);
+    });
+    recurring.forEach(r => {
+      const row = ensure(r.dept_id, r.dept_name);
+      const idx = monthIndex.get(r.month);
+      if (idx !== undefined) row.trend[idx].recurring_pct = parseFloat(r.recurring_pct);
+    });
+    capaOnTime.forEach(r => {
+      const row = ensure(r.dept_id, r.dept_name);
+      const idx = monthIndex.get(r.month);
+      if (idx !== undefined) row.trend[idx].capa_ontime_pct = parseFloat(r.ontime_pct);
     });
 
     res.json([...map.values()]);

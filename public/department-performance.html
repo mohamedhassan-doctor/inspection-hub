@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>مؤشرات أداء الأقسام | Inspection Hub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0e7490">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Inspection Hub">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <style>
+    .quick-filters { display:flex; gap:8px; flex-wrap:wrap; align-items:center }
+    .quick-filters .btn.active { background:#0e7490; color:#fff; border-color:#0e7490 }
+    .dept-row { cursor:pointer }
+    .dept-row:hover { background:#f0f9ff !important }
+    .unassigned-row { background:#f8fafc }
+    .kpi-big { text-align:center; padding:8px 4px }
+    .kpi-big .kpi-value { font-size:32px; font-weight:700; line-height:1 }
+    .kpi-big .kpi-label { font-size:13px; color:#64748b; margin-top:8px }
+    .kpi-big .kpi-sub { font-size:12px; color:#94a3b8; margin-top:4px }
+    .trend-mini { position:relative; height:180px; margin-top:10px }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-brand"><i class="fas fa-clipboard-check"></i><span>Inspection Hub</span></div>
+    <nav class="sidebar-nav">
+      <a href="/" class="nav-link" data-page="dashboard"><i class="fas fa-tachometer-alt"></i> لوحة التحكم</a>
+      <a href="/inspections" class="nav-link" data-page="inspections"><i class="fas fa-search"></i> الجولات</a>
+      <a href="/checklists" class="nav-link" data-page="checklists"><i class="fas fa-list-check"></i> قوائم التدقيق</a>
+      <a href="/findings" class="nav-link" data-page="findings"><i class="fas fa-exclamation-triangle"></i> المخالفات</a>
+      <a href="/capa" class="nav-link" data-page="capa"><i class="fas fa-tasks"></i> CAPA <span id="capa-badge" class="nav-badge" style="display:none">0</span></a>
+      <a href="/reports" class="nav-link" data-page="reports"><i class="fas fa-chart-bar"></i> التقارير</a>
+      <a href="/department-performance" class="nav-link quality-only" data-page="department-performance"><i class="fas fa-gauge-high"></i> مؤشرات الأقسام</a>
+      <a href="/weekly-schedule" class="nav-link quality-only" data-page="weekly-schedule"><i class="fas fa-calendar-week"></i> جدول المرور</a>
+      <a href="/departments" class="nav-link dept-admin" data-page="departments"><i class="fas fa-building"></i> الأقسام 🏥</a>
+      <a href="/users" class="nav-link admin-only" data-page="users"><i class="fas fa-users"></i> المستخدمون</a>
+    </nav>
+    <div class="sidebar-footer"><span id="user-name"></span><a href="/logout" class="logout-btn"><i class="fas fa-sign-out-alt"></i></a></div>
+  </aside>
+
+  <main class="main-content">
+    <div class="page-header">
+      <div class="page-title">مؤشرات أداء الأقسام <span>مقارنة الأقسام في الالتزام، البنود المتكررة، وإغلاق CAPA في الوقت</span></div>
+    </div>
+
+    <!-- Date range filter -->
+    <div class="filter-bar quick-filters" style="margin-bottom:20px">
+      <button class="btn btn-secondary btn-sm" id="qf-month" onclick="applyQuickFilter('month')">الشهر ده</button>
+      <button class="btn btn-secondary btn-sm" id="qf-quarter" onclick="applyQuickFilter('quarter')">الربع ده</button>
+      <button class="btn btn-secondary btn-sm" id="qf-all" onclick="applyQuickFilter('all')">كل الفترات</button>
+      <span style="color:#cbd5e1">|</span>
+      <label style="font-size:13px;color:#64748b">من</label>
+      <input type="date" id="f-from" class="form-control" style="width:150px" onchange="applyCustomRange()">
+      <label style="font-size:13px;color:#64748b">إلى</label>
+      <input type="date" id="f-to" class="form-control" style="width:150px" onchange="applyCustomRange()">
+      <button class="btn btn-secondary btn-sm" onclick="loadSummary()" title="تحديث"><i class="fas fa-sync"></i></button>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><i class="fas fa-table" style="color:#0e7490"></i> مقارنة الأقسام</div>
+      </div>
+      <div class="card-body" style="padding:0">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>القسم</th>
+                <th>نسبة الالتزام</th>
+                <th>البنود المتكررة</th>
+                <th>إغلاق CAPA في الوقت</th>
+              </tr>
+            </thead>
+            <tbody id="dp-tbody">
+              <tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:20px">جاري التحميل...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Drill-down modal -->
+<div class="modal-overlay" id="dept-modal">
+  <div class="modal modal-xl">
+    <div class="modal-header">
+      <span class="modal-title" id="dm-title">أداء القسم</span>
+      <button class="modal-close" onclick="closeModal('dept-modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="cards-row cols-3" style="margin-bottom:0">
+        <div class="card kpi-big" style="margin-bottom:0">
+          <div class="kpi-value" id="dm-compliance-val">—</div>
+          <div class="kpi-label">نسبة الالتزام</div>
+          <div class="kpi-sub" id="dm-compliance-sub"></div>
+        </div>
+        <div class="card kpi-big" style="margin-bottom:0">
+          <div class="kpi-value" id="dm-recurring-val">—</div>
+          <div class="kpi-label">نسبة البنود المتكررة</div>
+          <div class="kpi-sub" id="dm-recurring-sub"></div>
+        </div>
+        <div class="card kpi-big" style="margin-bottom:0">
+          <div class="kpi-value" id="dm-ontime-val">—</div>
+          <div class="kpi-label">إغلاق CAPA في الوقت</div>
+          <div class="kpi-sub" id="dm-ontime-sub"></div>
+        </div>
+      </div>
+
+      <div id="dm-trend-loading" style="text-align:center;color:#94a3b8;padding:20px">
+        <i class="fas fa-spinner fa-spin"></i> جاري تحميل بيانات آخر 6 شهور...
+      </div>
+      <div id="dm-trend-charts" style="display:none">
+        <div class="cards-row cols-3">
+          <div class="card" style="margin-bottom:0">
+            <div class="card-header"><div class="card-title">اتجاه الالتزام</div></div>
+            <div class="card-body"><div class="trend-mini"><canvas id="dm-chart-compliance"></canvas></div></div>
+          </div>
+          <div class="card" style="margin-bottom:0">
+            <div class="card-header"><div class="card-title">اتجاه البنود المتكررة</div></div>
+            <div class="card-body"><div class="trend-mini"><canvas id="dm-chart-recurring"></canvas></div></div>
+          </div>
+          <div class="card" style="margin-bottom:0">
+            <div class="card-header"><div class="card-title">اتجاه إغلاق CAPA في الوقت</div></div>
+            <div class="card-body"><div class="trend-mini"><canvas id="dm-chart-ontime"></canvas></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('dept-modal')">إغلاق</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/js/shared.js"></script>
+<script>
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+let summaryRows = [];
+let trendByDept = new Map(); // dept key -> trend array
+let trendReady = false;
+let dmCharts = {};
+
+function toISODate(d) { return d.toISOString().slice(0, 10); }
+
+function setActiveQuick(id) {
+  ['qf-month', 'qf-quarter', 'qf-all'].forEach(x => document.getElementById(x).classList.toggle('active', x === id));
+}
+
+function applyQuickFilter(kind) {
+  const today = new Date();
+  let from = '', to = '';
+  if (kind === 'month') {
+    from = toISODate(new Date(today.getFullYear(), today.getMonth(), 1));
+    to = toISODate(today);
+    setActiveQuick('qf-month');
+  } else if (kind === 'quarter') {
+    const qStartMonth = Math.floor(today.getMonth() / 3) * 3;
+    from = toISODate(new Date(today.getFullYear(), qStartMonth, 1));
+    to = toISODate(today);
+    setActiveQuick('qf-quarter');
+  } else {
+    from = ''; to = '';
+    setActiveQuick('qf-all');
+  }
+  document.getElementById('f-from').value = from;
+  document.getElementById('f-to').value = to;
+  loadSummary();
+}
+
+function applyCustomRange() {
+  setActiveQuick(null);
+  loadSummary();
+}
+
+// ── Color thresholds ──
+// Higher-is-better metrics (compliance, capa on-time): green >=90, yellow 75-90, red <75
+function colorHigherBetter(pct) {
+  if (pct == null) return { cls: 'badge-secondary', bar: '' };
+  if (pct >= 90) return { cls: 'badge-success', bar: 'green' };
+  if (pct >= 75) return { cls: 'badge-warning', bar: 'yellow' };
+  return { cls: 'badge-danger', bar: 'red' };
+}
+// Lower-is-better metric (recurring findings): green <=10, yellow 10-25, red >25
+function colorLowerBetter(pct) {
+  if (pct == null) return { cls: 'badge-secondary', bar: '' };
+  if (pct <= 10) return { cls: 'badge-success', bar: 'green' };
+  if (pct <= 25) return { cls: 'badge-warning', bar: 'yellow' };
+  return { cls: 'badge-danger', bar: 'red' };
+}
+
+function pctCell(pct, colorFn) {
+  if (pct == null) return '<span class="badge badge-secondary">لا توجد بيانات</span>';
+  const c = colorFn(pct);
+  return `<span class="badge ${c.cls}">${pct}%</span>`;
+}
+
+function deptKey(id) { return id === null || id === undefined ? 'null' : String(id); }
+
+function renderTable() {
+  const tbody = document.getElementById('dp-tbody');
+  if (!summaryRows.length) {
+    tbody.innerHTML = '<tr><td colspan="4"><div class="empty-state"><i class="fas fa-chart-bar"></i><p>لا توجد بيانات</p></div></td></tr>';
+    return;
+  }
+  const known = summaryRows.filter(r => r.dept_id !== null).sort((a, b) => (b.compliance.avg_compliance || 0) - (a.compliance.avg_compliance || 0));
+  const unassigned = summaryRows.filter(r => r.dept_id === null);
+
+  const rowHtml = (r, isUnassigned) => `
+    <tr class="dept-row ${isUnassigned ? 'unassigned-row' : ''}" onclick="openDeptDrilldown('${deptKey(r.dept_id)}')">
+      <td><strong>${r.dept_name}</strong>${isUnassigned ? ' <span class="badge badge-secondary" style="font-size:11px">بيانات غير مرتبطة بقسم</span>' : ''}</td>
+      <td>${pctCell(r.compliance.count > 0 ? r.compliance.avg_compliance : null, colorHigherBetter)}</td>
+      <td>${pctCell(r.recurring_findings.total_items > 0 ? r.recurring_findings.recurring_pct : null, colorLowerBetter)}</td>
+      <td>${pctCell(r.capa_ontime.closed_count > 0 ? r.capa_ontime.ontime_pct : null, colorHigherBetter)}</td>
+    </tr>`;
+
+  tbody.innerHTML = known.map(r => rowHtml(r, false)).join('') + unassigned.map(r => rowHtml(r, true)).join('');
+}
+
+async function loadSummary() {
+  try {
+    const from = document.getElementById('f-from').value;
+    const to = document.getElementById('f-to').value;
+    const qs = new URLSearchParams();
+    if (from) qs.set('from', from);
+    if (to) qs.set('to', to);
+    const url = '/api/reports/department-performance' + (qs.toString() ? `?${qs}` : '');
+    summaryRows = await api('GET', url);
+    renderTable();
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function loadTrend() {
+  try {
+    const rows = await api('GET', '/api/reports/department-performance-trend');
+    trendByDept = new Map(rows.map(r => [deptKey(r.dept_id), r]));
+    trendReady = true;
+  } catch (e) {
+    showToast('تعذر تحميل بيانات الاتجاه الشهري', 'error');
+  }
+}
+
+function destroyDmCharts() {
+  Object.values(dmCharts).forEach(c => c && c.destroy());
+  dmCharts = {};
+}
+
+function renderTrendChart(canvasId, key, months, label, color) {
+  const data = months.map(m => (m[key] == null ? null : m[key]));
+  dmCharts[key] = new Chart(document.getElementById(canvasId), {
+    type: 'line',
+    data: {
+      labels: months.map(m => m.month),
+      datasets: [{ label, data, borderColor: color, backgroundColor: color + '20', tension: 0.3, spanGaps: true }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { min: 0, max: 100, ticks: { callback: v => v + '%' } } }
+    }
+  });
+}
+
+function openDeptDrilldown(key) {
+  const row = summaryRows.find(r => deptKey(r.dept_id) === key);
+  if (!row) return;
+
+  document.getElementById('dm-title').textContent = 'أداء القسم — ' + row.dept_name;
+
+  const compliancePct = row.compliance.count > 0 ? row.compliance.avg_compliance : null;
+  const recurringPct = row.recurring_findings.total_items > 0 ? row.recurring_findings.recurring_pct : null;
+  const ontimePct = row.capa_ontime.closed_count > 0 ? row.capa_ontime.ontime_pct : null;
+
+  const complianceColorInfo = colorHigherBetter(compliancePct);
+  const recurringColorInfo = colorLowerBetter(recurringPct);
+  const ontimeColorInfo = colorHigherBetter(ontimePct);
+  const colorHex = { 'badge-success': '#16a34a', 'badge-warning': '#d97706', 'badge-danger': '#dc2626', 'badge-secondary': '#94a3b8' };
+
+  const complianceEl = document.getElementById('dm-compliance-val');
+  complianceEl.textContent = compliancePct != null ? compliancePct + '%' : '—';
+  complianceEl.style.color = colorHex[complianceColorInfo.cls];
+  document.getElementById('dm-compliance-sub').textContent = `${row.compliance.count} جولة مكتملة`;
+
+  const recurringEl = document.getElementById('dm-recurring-val');
+  recurringEl.textContent = recurringPct != null ? recurringPct + '%' : '—';
+  recurringEl.style.color = colorHex[recurringColorInfo.cls];
+  document.getElementById('dm-recurring-sub').textContent = `${row.recurring_findings.recurring_items} من ${row.recurring_findings.total_items} بند`;
+
+  const ontimeEl = document.getElementById('dm-ontime-val');
+  ontimeEl.textContent = ontimePct != null ? ontimePct + '%' : '—';
+  ontimeEl.style.color = colorHex[ontimeColorInfo.cls];
+  document.getElementById('dm-ontime-sub').textContent = `${row.capa_ontime.closed_on_time} من ${row.capa_ontime.closed_count} CAPA`;
+
+  openModal('dept-modal');
+
+  const trendLoading = document.getElementById('dm-trend-loading');
+  const trendCharts = document.getElementById('dm-trend-charts');
+  destroyDmCharts();
+
+  const renderCharts = () => {
+    const trend = trendByDept.get(key);
+    const months = trend ? trend.trend : [];
+    trendLoading.style.display = 'none';
+    trendCharts.style.display = 'block';
+    renderTrendChart('dm-chart-compliance', 'compliance_pct', months, 'الالتزام %', '#0e7490');
+    renderTrendChart('dm-chart-recurring', 'recurring_pct', months, 'البنود المتكررة %', '#d97706');
+    renderTrendChart('dm-chart-ontime', 'capa_ontime_pct', months, 'إغلاق CAPA في الوقت %', '#16a34a');
+  };
+
+  if (trendReady) {
+    renderCharts();
+  } else {
+    trendLoading.style.display = 'block';
+    trendCharts.style.display = 'none';
+    const wait = setInterval(() => {
+      if (trendReady) { clearInterval(wait); renderCharts(); }
+    }, 200);
+  }
+}
+
+async function init() {
+  await initPage('department-performance');
+  if (!canAccessChecklists()) { window.location.href = '/'; return; }
+  setActiveQuick('qf-all');
+  await Promise.all([loadSummary(), loadTrend()]);
+}
+
+function canAccessChecklists() {
+  return currentUser && (currentUser.role === 'superadmin' || (currentUser.department_name && currentUser.department_name.includes('جودة')));
+}
+
+init();
+</script>
+</body>
+</html>
