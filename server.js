@@ -664,9 +664,14 @@ app.get('/api/departments', requireAuthAPI, async (req, res) => {
     const { rows } = await pool.query(`
       SELECT d.id, d.name,
         COUNT(DISTINCT i.id)::int  AS inspection_count,
-        COUNT(DISTINCT i.inspector_id)::int AS user_count
+        COUNT(DISTINCT i.inspector_id)::int AS user_count,
+        ROUND(
+          COUNT(CASE WHEN ii.result='compliant' THEN 1 END) * 100.0 /
+          NULLIF(COUNT(CASE WHEN ii.result IN ('compliant','needs_improvement','non_compliant') THEN 1 END), 0)
+        , 1) AS compliance_rate
       FROM departments d
       LEFT JOIN inspections i ON i.dept_id = d.id
+      LEFT JOIN inspection_items ii ON ii.inspection_id = i.id
       GROUP BY d.id, d.name
       ORDER BY d.id
     `);

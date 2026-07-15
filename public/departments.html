@@ -53,7 +53,7 @@
                 <th>#</th>
                 <th>اسم القسم</th>
                 <th>عدد الجولات</th>
-                <th>عدد المستخدمين</th>
+                <th>نسبة التزام القسم</th>
                 <th>الإجراءات</th>
               </tr>
             </thead>
@@ -102,7 +102,6 @@ async function loadDepts() {
 
 function renderStats(rows) {
   const totalInsp = rows.reduce((s, d) => s + (d.inspection_count || 0), 0);
-  const totalUsers = rows.reduce((s, d) => s + (d.user_count || 0), 0);
   document.getElementById('dept-stats').innerHTML = `
     <div class="stat-card">
       <div class="stat-icon teal"><i class="fas fa-building"></i></div>
@@ -121,6 +120,14 @@ function renderStats(rows) {
   `;
 }
 
+function complianceCell(rate) {
+  if (rate === null || rate === undefined) {
+    return `<span class="badge badge-secondary">لا توجد بيانات</span>`;
+  }
+  const cls = rate > 90 ? 'badge-success' : rate >= 70 ? 'badge-warning' : 'badge-danger';
+  return `<span class="badge ${cls}">${rate}%</span>`;
+}
+
 function renderTable(rows) {
   const tbody = document.getElementById('dept-tbody');
   if (!rows.length) {
@@ -136,11 +143,7 @@ function renderTable(rows) {
           ${d.inspection_count || 0}
         </span>
       </td>
-      <td>
-        <span class="badge ${d.user_count > 0 ? 'badge-info' : 'badge-secondary'}">
-          ${d.user_count || 0}
-        </span>
-      </td>
+      <td>${complianceCell(d.compliance_rate)}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-secondary btn-sm btn-icon" onclick="editDept(${d.id})" title="تعديل">
           <i class="fas fa-edit"></i>
