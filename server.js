@@ -118,6 +118,98 @@ async function calcCompliance(inspectionId) {
   return Math.round((compliant / total) * 100 * 10) / 10;
 }
 
+// ── Department performance KPIs (shared by /api/reports/* and /api/reports/department-performance) ──
+function dateRangeFilter(column, from, to, params) {
+  let filter = '';
+  if (from) { params.push(from); filter += ` AND ${column} >= $${params.length}`; }
+  if (to) { params.push(to); filter += ` AND ${column} <= $${params.length}`; }
+  return filter;
+}
+
+async function complianceByDept(from, to) {
+  const params = [];
+  const dateFilter = dateRangeFilter('i.scheduled_date', from, to, params);
+  const { rows } = await pool.query(`
+    WITH scores AS (
+      SELECT i.dept_id, i.id,
+        CASE WHEN COUNT(CASE WHEN ii.result IS NOT NULL AND ii.result!='not_applicable' THEN 1 END)>0
+          THEN ROUND(COUNT(CASE WHEN ii.result='compliant' THEN 1 END)*100.0/
+            NULLIF(COUNT(CASE WHEN ii.result IS NOT NULL AND ii.result!='not_applicable' THEN 1 END),0),1)
+          ELSE 0 END AS compliance
+      FROM inspections i
+      LEFT JOIN inspection_items ii ON ii.inspection_id=i.id
+      WHERE i.status='completed' ${dateFilter}
+      GROUP BY i.dept_id, i.id
+    )
+    SELECT d.id AS dept_id, d.name AS dept_name,
+      COALESCE(ROUND(AVG(s.compliance),1),0) AS avg_compliance, COUNT(s.id)::int AS count
+    FROM departments d
+    LEFT JOIN scores s ON s.dept_id=d.id
+    GROUP BY d.id, d.name ORDER BY avg_compliance DESC
+  `, params);
+  return rows;
+}
+
+// Recurring findings: same checklist_item_id (fallback item_text) scored non_compliant/needs_improvement
+// in 2+ different completed inspections in the same department within a 3-month window.
+async function recurringFindingsByDept(from, to) {
+  const params = [];
+  const dateFilter = dateRangeFilter('i.scheduled_date', from, to, params);
+  const { rows } = await pool.query(`
+    WITH bad_items AS (
+      SELECT ii.id, i.dept_id, i.scheduled_date,
+             COALESCE(ii.checklist_item_id::text, ii.item_text) AS item_key
+      FROM inspection_items ii
+      JOIN inspections i ON i.id = ii.inspection_id
+      WHERE i.status='completed' AND ii.result IN ('non_compliant','needs_improvement') ${dateFilter}
+    ),
+    recurring AS (
+      SELECT DISTINCT a.dept_id, a.item_key
+      FROM bad_items a
+      JOIN bad_items b ON b.dept_id IS NOT DISTINCT FROM a.dept_id
+                       AND b.item_key = a.item_key
+                       AND b.id <> a.id
+                       AND ABS(a.scheduled_date - b.scheduled_date) <= 90
+    )
+    SELECT
+      bi.dept_id,
+      COALESCE(d.name, 'غير محدد') AS dept_name,
+      COUNT(DISTINCT bi.item_key)::int AS total_items,
+      COUNT(DISTINCT r.item_key)::int AS recurring_items,
+      CASE WHEN COUNT(DISTINCT bi.item_key) > 0
+        THEN ROUND(COUNT(DISTINCT r.item_key)*100.0/COUNT(DISTINCT bi.item_key),1)
+        ELSE 0 END AS recurring_pct
+    FROM bad_items bi
+    LEFT JOIN departments d ON d.id = bi.dept_id
+    LEFT JOIN recurring r ON r.dept_id IS NOT DISTINCT FROM bi.dept_id AND r.item_key = bi.item_key
+    GROUP BY bi.dept_id, d.name
+    ORDER BY recurring_pct DESC
+  `, params);
+  return rows;
+}
+
+// CAPA on-time rate: closed CAPAs where closed_at <= due_date, grouped by capas.dept_id
+async function capaOnTimeByDept(from, to) {
+  const params = [];
+  const dateFilter = dateRangeFilter('c.closed_at::date', from, to, params);
+  const { rows } = await pool.query(`
+    SELECT
+      c.dept_id,
+      COALESCE(d.name, 'غير محدد') AS dept_name,
+      COUNT(*)::int AS closed_count,
+      COUNT(CASE WHEN c.closed_at::date <= c.due_date THEN 1 END)::int AS closed_on_time,
+      CASE WHEN COUNT(*) > 0
+        THEN ROUND(COUNT(CASE WHEN c.closed_at::date <= c.due_date THEN 1 END)*100.0/COUNT(*),1)
+        ELSE 0 END AS ontime_pct
+    FROM capas c
+    LEFT JOIN departments d ON d.id = c.dept_id
+    WHERE c.status='closed' ${dateFilter}
+    GROUP BY c.dept_id, d.name
+    ORDER BY ontime_pct DESC
+  `, params);
+  return rows;
+}
+
 // ── Sync helpers ──
 const _typeLabels = {
   environmental_safety:'السلامة البيئية', patient_safety:'سلامة المريض',
@@ -299,6 +391,15 @@ async function initDB() {
   `);
   await pool.query(`ALTER TABLE inspection_items ADD COLUMN IF NOT EXISTS checklist_item_id INTEGER REFERENCES checklist_items(id) ON DELETE SET NULL`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_inspection_items_repeat_check ON inspection_items (checklist_item_id, result)`);
+
+  // Department performance KPIs: capas.dept_id (derived from findings.dept_id, backfilled for existing rows)
+  await pool.query(`ALTER TABLE capas ADD COLUMN IF NOT EXISTS dept_id INTEGER REFERENCES departments(id) ON DELETE SET NULL`);
+  await pool.query(`
+    UPDATE capas c SET dept_id = f.dept_id
+    FROM findings f
+    WHERE c.finding_id = f.id AND c.dept_id IS DISTINCT FROM f.dept_id
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_capas_dept_id ON capas (dept_id)`);
 
   // Seed department→checklist-type mappings (idempotent via ON CONFLICT DO NOTHING)
   const seedWeekly = require('./seed-weekly');
@@ -1309,9 +1410,10 @@ app.get('/api/capa', requireAuthAPI, async (req, res) => {
 app.post('/api/capa', requireAuthAPI, async (req, res) => {
   try {
     const { finding_id, action, responsible_id, due_date, evidence_notes } = req.body;
+    const { rows: [finding] } = await pool.query("SELECT dept_id FROM findings WHERE id=$1", [finding_id]);
     const { rows: [c] } = await pool.query(
-      "INSERT INTO capas(finding_id,action,responsible_id,due_date,status,evidence_notes) VALUES($1,$2,$3,$4,'open',$5) RETURNING *",
-      [finding_id, action, responsible_id || null, due_date, evidence_notes || null]
+      "INSERT INTO capas(finding_id,action,responsible_id,due_date,status,evidence_notes,dept_id) VALUES($1,$2,$3,$4,'open',$5,$6) RETURNING *",
+      [finding_id, action, responsible_id || null, due_date, evidence_notes || null, finding ? finding.dept_id : null]
     );
     // Reminder 3 days before due date
     const remindAt = new Date(due_date);
@@ -1347,6 +1449,12 @@ app.delete('/api/capa/:id', requireAuthAPI, requireRole('superadmin', 'quality_m
 // ══════════════════════════════════
 app.get('/api/reports/compliance', requireAuthAPI, async (req, res) => {
   try {
+    const { from, to } = req.query;
+    const params = [];
+    let dateFilter = '';
+    if (from) { params.push(from); dateFilter += ` AND i.scheduled_date >= $${params.length}`; }
+    if (to) { params.push(to); dateFilter += ` AND i.scheduled_date <= $${params.length}`; }
+
     const { rows } = await pool.query(`
       WITH scores AS (
         SELECT i.dept_id, i.id,
@@ -1356,16 +1464,78 @@ app.get('/api/reports/compliance', requireAuthAPI, async (req, res) => {
             ELSE 0 END AS compliance
         FROM inspections i
         LEFT JOIN inspection_items ii ON ii.inspection_id=i.id
-        WHERE i.status='completed'
+        WHERE i.status='completed' ${dateFilter}
         GROUP BY i.dept_id, i.id
       )
       SELECT d.name, COALESCE(ROUND(AVG(s.compliance),1),0) AS avg_compliance, COUNT(s.id)::int AS count
       FROM departments d
       LEFT JOIN scores s ON s.dept_id=d.id
       GROUP BY d.id, d.name ORDER BY avg_compliance DESC
-    `);
+    `, params);
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
+});
+
+app.get('/api/reports/recurring-findings', requireAuthAPI, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    res.json(await recurringFindingsByDept(from, to));
+  } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
+});
+
+app.get('/api/reports/capa-ontime', requireAuthAPI, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    res.json(await capaOnTimeByDept(from, to));
+  } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
+});
+
+app.get('/api/reports/department-performance', requireAuthAPI, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    const [compliance, recurring, capaOnTime] = await Promise.all([
+      complianceByDept(from, to),
+      recurringFindingsByDept(from, to),
+      capaOnTimeByDept(from, to),
+    ]);
+
+    const map = new Map();
+    const keyOf = (id) => (id === null || id === undefined ? 'null' : String(id));
+    const ensure = (id, name) => {
+      const k = keyOf(id);
+      if (!map.has(k)) {
+        map.set(k, {
+          dept_id: id ?? null,
+          dept_name: name,
+          compliance: { avg_compliance: 0, count: 0 },
+          recurring_findings: { total_items: 0, recurring_items: 0, recurring_pct: 0 },
+          capa_ontime: { closed_count: 0, closed_on_time: 0, ontime_pct: 0 },
+        });
+      }
+      return map.get(k);
+    };
+
+    compliance.forEach(r => {
+      const row = ensure(r.dept_id, r.dept_name);
+      row.compliance = { avg_compliance: parseFloat(r.avg_compliance) || 0, count: r.count };
+    });
+    recurring.forEach(r => {
+      const row = ensure(r.dept_id, r.dept_name);
+      row.recurring_findings = {
+        total_items: r.total_items, recurring_items: r.recurring_items,
+        recurring_pct: parseFloat(r.recurring_pct) || 0,
+      };
+    });
+    capaOnTime.forEach(r => {
+      const row = ensure(r.dept_id, r.dept_name);
+      row.capa_ontime = {
+        closed_count: r.closed_count, closed_on_time: r.closed_on_time,
+        ontime_pct: parseFloat(r.ontime_pct) || 0,
+      };
+    });
+
+    res.json([...map.values()]);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
 });
 
 app.get('/api/reports/pareto', requireAuthAPI, async (req, res) => {
