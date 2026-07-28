@@ -1733,11 +1733,11 @@ app.get('/api/reports/department-checklist-rounds', requireAuthAPI, async (req, 
       pool.query(`
         SELECT f.inspection_id,
           COUNT(c.id)::int AS total_capas,
-          COUNT(CASE WHEN c.status='closed' AND c.closed_at::date <= c.due_date THEN 1 END)::int AS ontime_capas
+          COUNT(CASE WHEN c.closed_at::date <= c.due_date THEN 1 END)::int AS ontime_capas
         FROM inspections i
         JOIN findings f ON f.inspection_id = i.id
         JOIN capas c ON c.finding_id = f.id
-        WHERE i.status='completed' AND i.dept_id=$1 AND i.template_id=$2
+        WHERE i.status='completed' AND i.dept_id=$1 AND i.template_id=$2 AND c.status='closed'
         GROUP BY f.inspection_id
       `, [deptId, templateId]),
     ]);
