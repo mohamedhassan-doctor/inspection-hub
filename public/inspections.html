@@ -738,7 +738,7 @@ async function openReport(id) {
         <div style="text-align:center">
           <div style="font-family:'Tajawal',sans-serif;font-weight:700;font-size:22px;color:#0e7490">مستشفى المقطم التخصصي</div>
           <div style="font-size:14px;color:#64748b;margin-top:2px">Mokattam Specialized Hospital</div>
-          <div style="font-family:'Tajawal',sans-serif;font-weight:600;font-size:16px;color:#1e293b;margin-top:8px">تقرير جولة تفتيشية</div>
+          <div style="font-family:'Tajawal',sans-serif;font-weight:600;font-size:16px;color:#1e293b;margin-top:8px">تقرير مرور إدارة الجودة</div>
         </div>
       </div>
       <div style="background:#f8fafc;padding:16px;border-radius:8px;margin-bottom:20px">
@@ -746,7 +746,7 @@ async function openReport(id) {
           <div><strong>العنوان:</strong> ${i.title}</div>
           <div><strong>النوع:</strong> ${inspTypeLabels[i.type]||i.type}</div>
           <div><strong>القسم:</strong> ${i.dept_name||'—'}</div>
-          <div><strong>المفتش:</strong> ${i.inspector_name||'—'}</div>
+          <div><strong>القائم بالمرور:</strong> ${i.inspector_name||'—'}</div>
           <div><strong>التاريخ:</strong> ${fmtDate(i.scheduled_date)}</div>
           <div><strong>الحالة:</strong> <span class="badge ${sl.cls}">${sl.text}</span></div>
         </div>
