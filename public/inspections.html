@@ -659,7 +659,8 @@ async function completeInspection() {
   if (!confirmAction('هل تريد إنهاء الجولة؟ لن تتمكن من تعديل النتائج بعد ذلك.')) return;
   try {
     const d = await api('POST', `/api/inspections/${currentExecId}/complete`);
-    showToast(`تم إنهاء الجولة — نسبة المطابقة: ${d.compliance_score}%`, 'success');
+    const complianceMsg = d.compliance_score != null ? `${d.compliance_score}%` : 'لا توجد بيانات (لا توجد بنود قابلة للتطبيق)';
+    showToast(`تم إنهاء الجولة — نسبة المطابقة: ${complianceMsg}`, 'success');
     closeModal('exec-modal');
     loadInspections();
   } catch (e) { showToast(e.message, 'error'); }
@@ -671,7 +672,7 @@ async function openReport(id) {
     const d = await api('GET', `/api/inspections/${id}/report`);
     const { inspection: i, items, findings } = d;
     const sl = statusLabels[i.status] || { text: i.status, cls: 'badge-secondary' };
-    const pct = i.compliance_score != null ? i.compliance_score : 0;
+    const pct = i.compliance_score != null ? parseFloat(i.compliance_score) : null;
 
     const rptSections = {};
     const rptOrder = [];
@@ -738,11 +739,16 @@ async function openReport(id) {
           <div><strong>الحالة:</strong> <span class="badge ${sl.cls}">${sl.text}</span></div>
         </div>
         <div style="margin-top:16px;text-align:center">
+          ${pct !== null ? `
           <div style="font-size:36px;font-weight:700;color:${pct>=85?'#16a34a':pct>=70?'#d97706':'#dc2626'}">${pct}%</div>
           <div style="color:#64748b">نسبة المطابقة الإجمالية</div>
           <div class="progress-bar-wrap" style="max-width:300px;margin:8px auto 0">
             <div class="progress-bar ${complianceColor(pct)}" style="width:${pct}%"></div>
           </div>
+          ` : `
+          <div style="font-size:20px;font-weight:700;color:#64748b"><span class="badge badge-secondary">لا توجد بيانات</span></div>
+          <div style="color:#94a3b8;font-size:13px;margin-top:6px">لا توجد بنود قابلة للتطبيق في هذه الجولة</div>
+          `}
         </div>
       </div>
       <h4 style="margin-bottom:12px">بنود الجولة حسب المحاور</h4>

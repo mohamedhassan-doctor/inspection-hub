@@ -114,8 +114,15 @@ async function calcCompliance(inspectionId) {
     [inspectionId]
   );
   const { compliant, total } = r.rows[0];
-  if (!total) return 0;
+  if (!total) return null;
   return Math.round((compliant / total) * 100 * 10) / 10;
+}
+
+// Splits a 'YYYY-MM' string into the first and last calendar day of that month.
+function monthBounds(monthStr) {
+  const [y, m] = monthStr.split('-').map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  return { from: `${monthStr}-01`, to: `${monthStr}-${String(lastDay).padStart(2, '0')}` };
 }
 
 // ── Department performance KPIs (shared by /api/reports/* and /api/reports/department-performance) ──
@@ -135,17 +142,17 @@ async function complianceByDept(from, to) {
         CASE WHEN COUNT(CASE WHEN ii.result IS NOT NULL AND ii.result!='not_applicable' THEN 1 END)>0
           THEN ROUND(COUNT(CASE WHEN ii.result='compliant' THEN 1 END)*100.0/
             NULLIF(COUNT(CASE WHEN ii.result IS NOT NULL AND ii.result!='not_applicable' THEN 1 END),0),1)
-          ELSE 0 END AS compliance
+          ELSE NULL END AS compliance
       FROM inspections i
       LEFT JOIN inspection_items ii ON ii.inspection_id=i.id
       WHERE i.status='completed' ${dateFilter}
       GROUP BY i.dept_id, i.id
     )
     SELECT d.id AS dept_id, d.name AS dept_name,
-      COALESCE(ROUND(AVG(s.compliance),1),0) AS avg_compliance, COUNT(s.id)::int AS count
+      ROUND(AVG(s.compliance),1) AS avg_compliance, COUNT(s.id)::int AS count
     FROM departments d
     LEFT JOIN scores s ON s.dept_id=d.id
-    GROUP BY d.id, d.name ORDER BY avg_compliance DESC
+    GROUP BY d.id, d.name ORDER BY avg_compliance DESC NULLS LAST
   `, params);
   return rows;
 }
@@ -218,7 +225,7 @@ async function complianceTrendByDept(from, to) {
         CASE WHEN COUNT(CASE WHEN ii.result IS NOT NULL AND ii.result!='not_applicable' THEN 1 END)>0
           THEN ROUND(COUNT(CASE WHEN ii.result='compliant' THEN 1 END)*100.0/
             NULLIF(COUNT(CASE WHEN ii.result IS NOT NULL AND ii.result!='not_applicable' THEN 1 END),0),1)
-          ELSE 0 END AS compliance
+          ELSE NULL END AS compliance
       FROM inspections i
       LEFT JOIN inspection_items ii ON ii.inspection_id=i.id
       WHERE i.status='completed' AND i.scheduled_date >= $1 AND i.scheduled_date <= $2
@@ -664,18 +671,17 @@ app.get('/api/departments', requireAuthAPI, async (req, res) => {
     const { rows } = await pool.query(`
       SELECT d.id, d.name,
         COUNT(DISTINCT i.id)::int  AS inspection_count,
-        COUNT(DISTINCT i.inspector_id)::int AS user_count,
-        ROUND(
-          COUNT(CASE WHEN ii.result='compliant' THEN 1 END) * 100.0 /
-          NULLIF(COUNT(CASE WHEN ii.result IN ('compliant','needs_improvement','non_compliant') THEN 1 END), 0)
-        , 1) AS compliance_rate
+        COUNT(DISTINCT i.inspector_id)::int AS user_count
       FROM departments d
       LEFT JOIN inspections i ON i.dept_id = d.id
-      LEFT JOIN inspection_items ii ON ii.inspection_id = i.id
       GROUP BY d.id, d.name
       ORDER BY d.id
     `);
-    res.json(rows);
+    // Reuse the same per-inspection-then-average compliance formula used everywhere
+    // else (complianceByDept), instead of a separate pooled-items calculation.
+    const compliance = await complianceByDept();
+    const complianceMap = new Map(compliance.map(c => [c.dept_id, c.avg_compliance]));
+    res.json(rows.map(d => ({ ...d, compliance_rate: complianceMap.has(d.id) ? complianceMap.get(d.id) : null })));
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });
 
@@ -775,7 +781,7 @@ app.get('/api/dashboard/stats', requireAuthAPI, async (req, res) => {
     ]);
     res.json({
       total: parseInt(r1.rows[0].count),
-      avg_compliance: parseFloat(r2.rows[0].avg) || 0,
+      avg_compliance: r2.rows[0].avg != null ? parseFloat(r2.rows[0].avg) : null,
       open_findings: parseInt(r3.rows[0].cnt),
       overdue_capas: parseInt(r4.rows[0].count),
     });
@@ -785,35 +791,11 @@ app.get('/api/dashboard/stats', requireAuthAPI, async (req, res) => {
 app.get('/api/dashboard/departments', requireAuthAPI, async (req, res) => {
   try {
     const month = req.query.month; // format: YYYY-MM
-    let dateFilter = `DATE_TRUNC('month',i.scheduled_date)=DATE_TRUNC('month',CURRENT_DATE)`;
-    const params = [];
-    if (month) {
-      dateFilter = `DATE_TRUNC('month',i.scheduled_date)=DATE_TRUNC('month',$1::date)`;
-      params.push(month + '-01');
-    }
-
-    const q = `
-      WITH scores AS (
-        SELECT i.dept_id, i.id,
-          CASE WHEN COUNT(CASE WHEN ii.result IS NOT NULL AND ii.result!='not_applicable' THEN 1 END)>0
-            THEN ROUND(COUNT(CASE WHEN ii.result='compliant' THEN 1 END)*100.0/
-              NULLIF(COUNT(CASE WHEN ii.result IS NOT NULL AND ii.result!='not_applicable' THEN 1 END),0),1)
-            ELSE 0 END AS compliance
-        FROM inspections i
-        LEFT JOIN inspection_items ii ON ii.inspection_id=i.id
-        WHERE i.status='completed' AND ${dateFilter}
-        GROUP BY i.dept_id, i.id
-      )
-      SELECT d.id, d.name,
-        COUNT(s.id)::int AS inspection_count,
-        COALESCE(ROUND(AVG(s.compliance),1),0) AS avg_compliance
-      FROM departments d
-      LEFT JOIN scores s ON s.dept_id=d.id
-      GROUP BY d.id, d.name
-      ORDER BY d.name
-    `;
-    const { rows } = await pool.query(q, params);
-    res.json(rows);
+    const { from, to } = monthBounds(month || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
+    const rows = await complianceByDept(from, to);
+    res.json(rows
+      .map(r => ({ id: r.dept_id, name: r.dept_name, inspection_count: r.count, avg_compliance: r.avg_compliance }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ar')));
   } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
 });
 
@@ -1155,7 +1137,7 @@ app.post('/api/inspections/:id/complete', requireAuthAPI, async (req, res) => {
       "UPDATE inspections SET status='completed', compliance_score=$1 WHERE id=$2",
       [score, req.params.id]
     );
-    await audit(req.session.userId, 'complete_inspection', `إنهاء الجولة #${req.params.id} - نسبة المطابقة: ${score}%`);
+    await audit(req.session.userId, 'complete_inspection', `إنهاء الجولة #${req.params.id} - نسبة المطابقة: ${score != null ? score + '%' : 'لا توجد بيانات'}`);
     res.json({ ok: true, compliance_score: score });
   } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
 });
@@ -1536,29 +1518,8 @@ app.delete('/api/capa/:id', requireAuthAPI, requireRole('superadmin', 'quality_m
 app.get('/api/reports/compliance', requireAuthAPI, async (req, res) => {
   try {
     const { from, to } = req.query;
-    const params = [];
-    let dateFilter = '';
-    if (from) { params.push(from); dateFilter += ` AND i.scheduled_date >= $${params.length}`; }
-    if (to) { params.push(to); dateFilter += ` AND i.scheduled_date <= $${params.length}`; }
-
-    const { rows } = await pool.query(`
-      WITH scores AS (
-        SELECT i.dept_id, i.id,
-          CASE WHEN COUNT(CASE WHEN ii.result IS NOT NULL AND ii.result!='not_applicable' THEN 1 END)>0
-            THEN ROUND(COUNT(CASE WHEN ii.result='compliant' THEN 1 END)*100.0/
-              NULLIF(COUNT(CASE WHEN ii.result IS NOT NULL AND ii.result!='not_applicable' THEN 1 END),0),1)
-            ELSE 0 END AS compliance
-        FROM inspections i
-        LEFT JOIN inspection_items ii ON ii.inspection_id=i.id
-        WHERE i.status='completed' ${dateFilter}
-        GROUP BY i.dept_id, i.id
-      )
-      SELECT d.name, COALESCE(ROUND(AVG(s.compliance),1),0) AS avg_compliance, COUNT(s.id)::int AS count
-      FROM departments d
-      LEFT JOIN scores s ON s.dept_id=d.id
-      GROUP BY d.id, d.name ORDER BY avg_compliance DESC
-    `, params);
-    res.json(rows);
+    const rows = await complianceByDept(from, to);
+    res.json(rows.map(r => ({ name: r.dept_name, avg_compliance: r.avg_compliance, count: r.count })));
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });
 
@@ -1745,7 +1706,9 @@ app.get('/api/reports/export', requireAuthAPI, async (req, res) => {
 
     const ws1 = XLSX.utils.json_to_sheet(r1.rows.map(r => ({
       'العنوان': r.title, 'النوع': r.type, 'القسم': r.dept,
-      'التاريخ': r.scheduled_date, 'الحالة': r.status, 'نسبة المطابقة': r.compliance_score, 'المفتش': r.inspector,
+      'التاريخ': r.scheduled_date, 'الحالة': r.status,
+      'نسبة المطابقة': r.compliance_score != null ? r.compliance_score : 'لا توجد بيانات',
+      'المفتش': r.inspector,
     })));
     XLSX.utils.book_append_sheet(wb, ws1, 'الجولات');
 

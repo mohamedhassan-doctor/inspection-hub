@@ -112,11 +112,11 @@ function destroyChart(id) {
 async function loadCompliance() {
   try {
     const rows = await api('GET', '/api/reports/compliance');
-    // Chart
+    // Chart — departments with no data leave a gap instead of a misleading 0% bar
     destroyChart('compliance');
     const labels = rows.map(r => r.name);
-    const data = rows.map(r => parseFloat(r.avg_compliance) || 0);
-    const colors = data.map(v => v >= 85 ? '#22c55e' : v >= 70 ? '#f59e0b' : '#ef4444');
+    const data = rows.map(r => r.avg_compliance != null ? parseFloat(r.avg_compliance) : null);
+    const colors = data.map(v => v === null ? '#cbd5e1' : v >= 85 ? '#22c55e' : v >= 70 ? '#f59e0b' : '#ef4444');
     charts['compliance'] = new Chart(document.getElementById('compliance-chart'), {
       type: 'bar',
       data: {
@@ -138,7 +138,16 @@ async function loadCompliance() {
     const tbody = document.getElementById('compliance-tbody');
     if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:20px">لا توجد بيانات</td></tr>'; return; }
     tbody.innerHTML = rows.map(r => {
-      const pct = parseFloat(r.avg_compliance) || 0;
+      if (r.avg_compliance == null) {
+        return `<tr>
+          <td><strong>${r.name}</strong></td>
+          <td><span class="badge badge-secondary">لا توجد بيانات</span></td>
+          <td class="col-hide-mobile">${r.count}</td>
+          <td class="col-hide-mobile">—</td>
+          <td style="color:#94a3b8">لا توجد بيانات</td>
+        </tr>`;
+      }
+      const pct = parseFloat(r.avg_compliance);
       const color = complianceColor(pct);
       const cls = complianceBadgeClass(pct);
       const rating = pct >= 85 ? '✓ ممتاز' : pct >= 70 ? '~ مقبول' : '✗ يحتاج تحسين';
@@ -233,7 +242,7 @@ async function loadMonthly() {
       label: dept,
       data: months.map(m => {
         const row = rows.find(r => r.dept_name === dept && r.month === m);
-        return row ? parseFloat(row.avg_compliance) || 0 : null;
+        return row && row.avg_compliance != null ? parseFloat(row.avg_compliance) : null;
       }),
       borderColor: palette[i % palette.length],
       backgroundColor: palette[i % palette.length] + '20',

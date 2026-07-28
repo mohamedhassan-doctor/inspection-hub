@@ -166,7 +166,14 @@ function buildMonthFilter() {
 async function loadStats() {
   const d = await api('GET', '/api/dashboard/stats');
   document.getElementById('s-total').textContent = d.total;
-  document.getElementById('s-compliance').textContent = (d.avg_compliance || 0) + '%';
+  const compEl = document.getElementById('s-compliance');
+  if (d.avg_compliance != null) {
+    compEl.textContent = d.avg_compliance + '%';
+    compEl.style.fontSize = '';
+  } else {
+    compEl.textContent = 'لا توجد بيانات';
+    compEl.style.fontSize = '16px';
+  }
   document.getElementById('s-findings').textContent = d.open_findings;
   const ov = document.getElementById('s-overdue');
   ov.textContent = d.overdue_capas;
@@ -180,7 +187,15 @@ async function loadDepts() {
   const tbody = document.getElementById('dept-tbody');
   if (!rows.length) { tbody.innerHTML = '<tr><td colspan="4" class="empty-state">لا توجد بيانات</td></tr>'; return; }
   tbody.innerHTML = rows.map(r => {
-    const pct = parseFloat(r.avg_compliance) || 0;
+    if (r.avg_compliance == null) {
+      return `<tr>
+        <td><strong>${r.name}</strong></td>
+        <td>${r.inspection_count}</td>
+        <td><span class="badge badge-secondary">لا توجد بيانات</span></td>
+        <td>—</td>
+      </tr>`;
+    }
+    const pct = parseFloat(r.avg_compliance);
     const color = complianceColor(pct);
     const cls = complianceBadgeClass(pct);
     return `<tr>
