@@ -718,7 +718,7 @@ async function openReport(id) {
       const spColor = sp === null ? '#94a3b8' : sp >= 85 ? '#16a34a' : sp >= 70 ? '#d97706' : '#dc2626';
       const rows = secItems.map((item, idx) => {
         const rl = resultLabels[item.result] || { text: item.result || '—', cls: 'badge-secondary' };
-        return `<tr><td>${idx+1}</td><td>${item.item_text}</td><td>${item.gahar_ref||'—'}</td><td><span class="badge ${rl.cls}">${rl.text}</span></td><td>${item.notes||'—'}</td></tr>`;
+        return `<tr><td>${idx+1}</td><td>${item.item_text}</td><td>${item.gahar_ref||'—'}</td><td style="white-space:nowrap"><span class="badge ${rl.cls}">${rl.text}</span></td><td>${item.notes||'—'}</td></tr>`;
       }).join('');
       return `<div style="margin-bottom:16px">
         <div style="background:${isLow?'#fef2f2':'#f1f5f9'};padding:8px 12px;border-radius:8px 8px 0 0;border:1px solid ${isLow?'#fca5a5':'#e2e8f0'};display:flex;align-items:center;gap:8px">
@@ -728,7 +728,7 @@ async function openReport(id) {
           ${isLow?'<span style="font-size:11px;color:#dc2626">⚠ دون 80%</span>':''}
         </div>
         <div class="table-wrapper" style="margin:0">
-          <table><thead><tr><th>#</th><th>البند</th><th>GAHAR</th><th>النتيجة</th><th>ملاحظات</th></tr></thead><tbody>${rows}</tbody></table>
+          <table><thead><tr><th>#</th><th>البند</th><th>GAHAR</th><th style="min-width:120px;white-space:nowrap">النتيجة</th><th>ملاحظات</th></tr></thead><tbody>${rows}</tbody></table>
         </div>
       </div>`;
     }).join('');
