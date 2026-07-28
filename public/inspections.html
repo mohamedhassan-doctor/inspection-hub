@@ -733,6 +733,14 @@ async function openReport(id) {
         }).join('');
 
     document.getElementById('report-content').innerHTML = `
+      <div style="display:flex;align-items:center;gap:16px;padding-bottom:16px;margin-bottom:16px;border-bottom:2px solid #0e7490">
+        <img src="/images/hospital-logo.jpeg" alt="لوجو مستشفى المقطم التخصصي" style="height:90px;width:auto;flex-shrink:0">
+        <div style="flex:1;text-align:center">
+          <div style="font-family:'Tajawal',sans-serif;font-weight:700;font-size:22px;color:#0e7490">مستشفى المقطم التخصصي</div>
+          <div style="font-size:14px;color:#64748b;margin-top:2px">Mokattam Specialized Hospital</div>
+          <div style="font-family:'Tajawal',sans-serif;font-weight:600;font-size:16px;color:#1e293b;margin-top:8px">تقرير جولة تفتيشية</div>
+        </div>
+      </div>
       <div style="background:#f8fafc;padding:16px;border-radius:8px;margin-bottom:20px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <div><strong>العنوان:</strong> ${i.title}</div>
