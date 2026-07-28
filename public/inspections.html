@@ -222,6 +222,25 @@ let depts = [], users = [], checklists = [];
 let currentExecId = null;
 let allInspections = [];
 let canWrite = false;
+let logoDataUriPromise = null;
+
+// Fetches the hospital logo once and caches it as a base64 data URI so the print
+// window (a separate, same-origin-but-blank document) never depends on a network
+// fetch of /images/hospital-logo.jpeg at print time.
+function getLogoDataUri() {
+  if (!logoDataUriPromise) {
+    logoDataUriPromise = fetch('/images/hospital-logo.jpeg')
+      .then(r => r.blob())
+      .then(blob => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      }))
+      .catch(() => location.origin + '/images/hospital-logo.jpeg'); // fallback: absolute URL
+  }
+  return logoDataUriPromise;
+}
 
 function setupWriteAuth() {
   canWrite = currentUser && (
@@ -669,7 +688,10 @@ async function completeInspection() {
 // ── Report ──
 async function openReport(id) {
   try {
-    const d = await api('GET', `/api/inspections/${id}/report`);
+    const [d, logoSrc] = await Promise.all([
+      api('GET', `/api/inspections/${id}/report`),
+      getLogoDataUri(),
+    ]);
     const { inspection: i, items, findings } = d;
     const sl = statusLabels[i.status] || { text: i.status, cls: 'badge-secondary' };
     const pct = i.compliance_score != null ? parseFloat(i.compliance_score) : null;
@@ -718,7 +740,7 @@ async function openReport(id) {
 
     document.getElementById('report-content').innerHTML = `
       <div style="display:flex;align-items:center;justify-content:center;gap:18px;padding-bottom:16px;margin-bottom:16px;border-bottom:2px solid #0e7490">
-        <img src="/images/hospital-logo.jpeg" alt="لوجو مستشفى المقطم التخصصي" style="height:140px;width:auto;flex-shrink:0">
+        <img src="${logoSrc}" alt="لوجو مستشفى المقطم التخصصي" style="height:140px;width:auto;flex-shrink:0">
         <div style="text-align:center">
           <div style="font-family:'Tajawal',sans-serif;font-weight:700;font-size:22px;color:#0e7490">مستشفى المقطم التخصصي</div>
           <div style="font-size:14px;color:#64748b;margin-top:2px">Mokattam Specialized Hospital</div>
@@ -780,9 +802,23 @@ function printReport() {
 <body>${content}</body>
 </html>`);
   w.document.close();
-  w.focus();
-  w.print();
-  w.onafterprint = () => w.close();
+
+  const doPrint = () => {
+    w.focus();
+    w.print();
+    w.onafterprint = () => w.close();
+  };
+
+  // Wait for all images (the logo) to actually finish loading/decoding before
+  // printing — printing too early can produce a PDF with a blank/missing logo.
+  const imgs = w.document.images;
+  if (!imgs.length) { doPrint(); return; }
+  let remaining = imgs.length;
+  const onImgSettled = () => { remaining--; if (remaining <= 0) doPrint(); };
+  Array.from(imgs).forEach(img => {
+    if (img.complete) onImgSettled();
+    else { img.addEventListener('load', onImgSettled); img.addEventListener('error', onImgSettled); }
+  });
 }
 
 function openModal(id) { document.getElementById(id).classList.add('open'); }
