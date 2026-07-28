@@ -99,6 +99,14 @@
       <button class="modal-close" onclick="closeModal('dept-modal')">&times;</button>
     </div>
     <div class="modal-body">
+      <div class="dm-filter-bar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+        <label style="font-size:13px;color:#64748b">قائمة التدقيق</label>
+        <select id="dm-checklist-select" class="form-control" style="width:220px" onchange="onChecklistSelect()" disabled>
+          <option value="">كل القوائم</option>
+        </select>
+        <button id="dm-round-toggle" class="btn btn-secondary btn-sm" style="display:none" onclick="toggleRoundView()">عرض لكل جولة</button>
+      </div>
+
       <div class="cards-row cols-3" style="margin-bottom:0">
         <div class="card kpi-big" style="margin-bottom:0">
           <div class="kpi-value" id="dm-compliance-val">—</div>
@@ -119,6 +127,9 @@
 
       <div id="dm-trend-loading" style="text-align:center;color:#94a3b8;padding:20px">
         <i class="fas fa-spinner fa-spin"></i> جاري تحميل بيانات آخر 6 شهور...
+      </div>
+      <div id="dm-trend-empty" style="display:none;text-align:center;color:#94a3b8;padding:20px">
+        <i class="fas fa-inbox"></i> لا توجد جولات مسجلة لهذه القائمة
       </div>
       <div id="dm-trend-charts" style="display:none">
         <div class="cards-row cols-3">
@@ -153,6 +164,15 @@ let summaryRows = [];
 let trendByDept = new Map(); // dept key -> trend array
 let trendReady = false;
 let dmCharts = {};
+
+// ── Per-checklist drill-down state (scoped to the currently open modal) ──
+let dmCurrentKey = null;
+let dmCurrentDeptId = null;
+let selectedTemplateId = ''; // '' = "كل القوائم" (default, uses the pre-loaded trendByDept)
+let viewMode = 'monthly'; // 'monthly' | 'rounds'
+let checklistTrendCache = new Map(); // template_id -> monthly trend array
+let roundsCache = new Map(); // template_id -> rounds array
+let dmGeneration = 0; // bumped on every openDeptDrilldown to invalidate stale async responses
 
 function toISODate(d) { return d.toISOString().slice(0, 10); }
 
@@ -277,9 +297,166 @@ function renderTrendChart(canvasId, key, months, label, color) {
   });
 }
 
+function updateRoundToggleVisibility() {
+  const btn = document.getElementById('dm-round-toggle');
+  if (selectedTemplateId) {
+    btn.style.display = '';
+    btn.textContent = viewMode === 'rounds' ? 'عرض شهري' : 'عرض لكل جولة';
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+async function populateChecklistSelect(deptId) {
+  const gen = dmGeneration;
+  const select = document.getElementById('dm-checklist-select');
+  if (!deptId) { select.disabled = true; return; }
+  try {
+    const data = await api('GET', `/api/departments/${deptId}/checklists-preview`);
+    if (gen !== dmGeneration) return;
+    const list = data.department_specific || [];
+    if (!list.length) { select.disabled = true; return; }
+    list.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.name;
+      select.appendChild(opt);
+    });
+    select.disabled = false;
+  } catch (e) {
+    if (gen !== dmGeneration) return;
+    select.disabled = true;
+  }
+}
+
+async function onChecklistSelect() {
+  selectedTemplateId = document.getElementById('dm-checklist-select').value;
+  viewMode = 'monthly';
+  updateRoundToggleVisibility();
+  await renderForCurrentSelection();
+}
+
+async function toggleRoundView() {
+  viewMode = viewMode === 'rounds' ? 'monthly' : 'rounds';
+  updateRoundToggleVisibility();
+  await renderForCurrentSelection();
+}
+
+async function renderForCurrentSelection() {
+  const gen = dmGeneration;
+  const key = dmCurrentKey;
+  const trendLoading = document.getElementById('dm-trend-loading');
+  const trendCharts = document.getElementById('dm-trend-charts');
+  const trendEmpty = document.getElementById('dm-trend-empty');
+  trendEmpty.style.display = 'none';
+
+  // Default "كل القوائم": unchanged legacy path, reads the pre-loaded trendByDept — no new request.
+  if (!selectedTemplateId) {
+    destroyDmCharts();
+    const renderFromPreloaded = () => {
+      if (gen !== dmGeneration) return;
+      const trend = trendByDept.get(key);
+      const months = trend ? trend.trend : [];
+      trendLoading.style.display = 'none';
+      trendCharts.style.display = 'block';
+      renderTrendChart('dm-chart-compliance', 'compliance_pct', months, 'الالتزام %', '#0e7490');
+      renderTrendChart('dm-chart-recurring', 'recurring_pct', months, 'البنود المتكررة %', '#d97706');
+      renderTrendChart('dm-chart-ontime', 'capa_ontime_pct', months, 'إغلاق CAPA في الوقت %', '#16a34a');
+    };
+    if (trendReady) {
+      renderFromPreloaded();
+    } else {
+      trendLoading.style.display = 'block';
+      trendCharts.style.display = 'none';
+      const wait = setInterval(() => {
+        if (trendReady) { clearInterval(wait); renderFromPreloaded(); }
+      }, 200);
+    }
+    return;
+  }
+
+  if (viewMode === 'monthly') {
+    let months = checklistTrendCache.get(selectedTemplateId);
+    if (!months) {
+      trendLoading.style.display = 'block';
+      trendCharts.style.display = 'none';
+      try {
+        const data = await api('GET', `/api/reports/department-performance-trend?template_id=${selectedTemplateId}`);
+        if (gen !== dmGeneration) return;
+        const row = data.find(r => deptKey(r.dept_id) === key);
+        months = row ? row.trend : [];
+        checklistTrendCache.set(selectedTemplateId, months);
+      } catch (e) {
+        if (gen !== dmGeneration) return;
+        showToast('تعذر تحميل بيانات القائمة المحددة', 'error');
+        months = [];
+      }
+    }
+    if (gen !== dmGeneration) return;
+    destroyDmCharts();
+    trendLoading.style.display = 'none';
+    trendCharts.style.display = 'block';
+    renderTrendChart('dm-chart-compliance', 'compliance_pct', months, 'الالتزام %', '#0e7490');
+    renderTrendChart('dm-chart-recurring', 'recurring_pct', months, 'البنود المتكررة %', '#d97706');
+    renderTrendChart('dm-chart-ontime', 'capa_ontime_pct', months, 'إغلاق CAPA في الوقت %', '#16a34a');
+    return;
+  }
+
+  // viewMode === 'rounds'
+  let rounds = roundsCache.get(selectedTemplateId);
+  if (!rounds) {
+    trendLoading.style.display = 'block';
+    trendCharts.style.display = 'none';
+    try {
+      const data = await api('GET', `/api/reports/department-checklist-rounds?dept_id=${dmCurrentDeptId}&template_id=${selectedTemplateId}`);
+      if (gen !== dmGeneration) return;
+      rounds = data.rounds || [];
+      roundsCache.set(selectedTemplateId, rounds);
+    } catch (e) {
+      if (gen !== dmGeneration) return;
+      showToast('تعذر تحميل بيانات الجولات', 'error');
+      rounds = [];
+    }
+  }
+  if (gen !== dmGeneration) return;
+  trendLoading.style.display = 'none';
+  destroyDmCharts();
+  if (!rounds.length) {
+    trendCharts.style.display = 'none';
+    trendEmpty.style.display = 'block';
+    return;
+  }
+  trendCharts.style.display = 'block';
+  const roundPoints = rounds.map(r => ({
+    month: String(r.scheduled_date).slice(0, 10),
+    compliance_pct: r.compliance_pct,
+    recurring_pct: r.recurring_pct,
+    capa_ontime_pct: r.capa_ontime_pct,
+  }));
+  renderTrendChart('dm-chart-compliance', 'compliance_pct', roundPoints, 'الالتزام %', '#0e7490');
+  renderTrendChart('dm-chart-recurring', 'recurring_pct', roundPoints, 'البنود المتكررة %', '#d97706');
+  renderTrendChart('dm-chart-ontime', 'capa_ontime_pct', roundPoints, 'إغلاق CAPA في الوقت %', '#16a34a');
+}
+
 function openDeptDrilldown(key) {
   const row = summaryRows.find(r => deptKey(r.dept_id) === key);
   if (!row) return;
+
+  // Reset per-checklist state — a new dept drill-down always starts at "كل القوائم" / "شهري".
+  dmGeneration++;
+  dmCurrentKey = key;
+  dmCurrentDeptId = row.dept_id;
+  selectedTemplateId = '';
+  viewMode = 'monthly';
+  checklistTrendCache.clear();
+  roundsCache.clear();
+
+  const select = document.getElementById('dm-checklist-select');
+  select.innerHTML = '<option value="">كل القوائم</option>';
+  select.value = '';
+  select.disabled = true;
+  document.getElementById('dm-trend-empty').style.display = 'none';
+  updateRoundToggleVisibility();
 
   document.getElementById('dm-title').textContent = 'أداء القسم — ' + row.dept_name;
 
@@ -309,29 +486,9 @@ function openDeptDrilldown(key) {
 
   openModal('dept-modal');
 
-  const trendLoading = document.getElementById('dm-trend-loading');
-  const trendCharts = document.getElementById('dm-trend-charts');
   destroyDmCharts();
-
-  const renderCharts = () => {
-    const trend = trendByDept.get(key);
-    const months = trend ? trend.trend : [];
-    trendLoading.style.display = 'none';
-    trendCharts.style.display = 'block';
-    renderTrendChart('dm-chart-compliance', 'compliance_pct', months, 'الالتزام %', '#0e7490');
-    renderTrendChart('dm-chart-recurring', 'recurring_pct', months, 'البنود المتكررة %', '#d97706');
-    renderTrendChart('dm-chart-ontime', 'capa_ontime_pct', months, 'إغلاق CAPA في الوقت %', '#16a34a');
-  };
-
-  if (trendReady) {
-    renderCharts();
-  } else {
-    trendLoading.style.display = 'block';
-    trendCharts.style.display = 'none';
-    const wait = setInterval(() => {
-      if (trendReady) { clearInterval(wait); renderCharts(); }
-    }, 200);
-  }
+  renderForCurrentSelection();
+  populateChecklistSelect(row.dept_id);
 }
 
 async function init() {
