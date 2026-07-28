@@ -797,6 +797,19 @@ function printReport() {
   <style>
     body { direction: rtl; font-family: 'Tajawal', sans-serif; margin: 20px; background: #fff; }
     @media print { body { margin: 0; } }
+    /* Inlined (not relying on the external stylesheet load finishing before print()) so
+       result badges keep their color in Save-as-PDF, not just in the on-screen preview. */
+    .badge {
+      display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 99px;
+      font-size: 12px; font-weight: 600; white-space: nowrap;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .badge-success { background: #dcfce7 !important; color: #15803d !important; }
+    .badge-danger { background: #fee2e2 !important; color: #dc2626 !important; }
+    .badge-warning { background: #fef9c3 !important; color: #a16207 !important; }
+    .badge-info { background: #dbeafe !important; color: #1d4ed8 !important; }
+    .badge-secondary { background: #f1f5f9 !important; color: #475569 !important; }
+    .badge-teal { background: #ecfeff !important; color: #0e7490 !important; }
   </style>
 </head>
 <body>${content}</body>
@@ -809,15 +822,19 @@ function printReport() {
     w.onafterprint = () => w.close();
   };
 
-  // Wait for all images (the logo) to actually finish loading/decoding before
-  // printing — printing too early can produce a PDF with a blank/missing logo.
-  const imgs = w.document.images;
-  if (!imgs.length) { doPrint(); return; }
-  let remaining = imgs.length;
-  const onImgSettled = () => { remaining--; if (remaining <= 0) doPrint(); };
-  Array.from(imgs).forEach(img => {
-    if (img.complete) onImgSettled();
-    else { img.addEventListener('load', onImgSettled); img.addEventListener('error', onImgSettled); }
+  // Wait for all images (the logo) and external stylesheets to actually finish
+  // loading before printing — printing too early can produce a PDF with a
+  // blank/missing logo or unstyled (colorless) badges.
+  const resources = [
+    ...w.document.images,
+    ...w.document.querySelectorAll('link[rel="stylesheet"]'),
+  ];
+  if (!resources.length) { doPrint(); return; }
+  let remaining = resources.length;
+  const onResourceSettled = () => { remaining--; if (remaining <= 0) doPrint(); };
+  resources.forEach(res => {
+    if (res.tagName === 'IMG' ? res.complete : res.sheet) onResourceSettled();
+    else { res.addEventListener('load', onResourceSettled); res.addEventListener('error', onResourceSettled); }
   });
 }
 
