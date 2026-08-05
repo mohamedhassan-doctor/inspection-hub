@@ -1342,7 +1342,7 @@ app.get('/api/checklists/:id/items', requireAuthAPI, async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });
 
-app.post('/api/checklists/:id/items', requireAuthAPI, requireRole('superadmin', 'quality_manager'), async (req, res) => {
+app.post('/api/checklists/:id/items', requireAuthAPI, requireRole('superadmin', 'quality_manager', 'quality_staff'), async (req, res) => {
   try {
     const { text, gahar_ref, order_num, section_name } = req.body;
     const sec = section_name || 'عام';
@@ -1356,7 +1356,7 @@ app.post('/api/checklists/:id/items', requireAuthAPI, requireRole('superadmin', 
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });
 
-app.put('/api/checklists/:id/items/:itemId', requireAuthAPI, requireRole('superadmin', 'quality_manager'), async (req, res) => {
+app.put('/api/checklists/:id/items/:itemId', requireAuthAPI, requireRole('superadmin', 'quality_manager', 'quality_staff'), async (req, res) => {
   try {
     const { text, gahar_ref, order_num, active, section_name } = req.body;
     const fields = [];
@@ -1375,7 +1375,7 @@ app.put('/api/checklists/:id/items/:itemId', requireAuthAPI, requireRole('supera
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });
 
-app.delete('/api/checklists/:id/items/:itemId', requireAuthAPI, requireRole('superadmin', 'quality_manager'), async (req, res) => {
+app.delete('/api/checklists/:id/items/:itemId', requireAuthAPI, requireRole('superadmin', 'quality_manager', 'quality_staff'), async (req, res) => {
   try {
     await pool.query("DELETE FROM checklist_items WHERE id=$1", [req.params.itemId]);
     res.json({ ok: true });
