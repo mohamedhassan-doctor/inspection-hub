@@ -154,8 +154,10 @@
 
 <div id="toast-container"></div>
 <script src="/js/shared.js"></script>
+<script src="/js/searchable-select.js"></script>
 <script>
 let depts = [], inspectors = [], allSchedule = [];
+let _mChecklistSS = null;
 let currentWeekStart = getWeekStart(new Date());
 
 const dayNames = ['السبت', 'الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
@@ -244,6 +246,7 @@ async function loadInit() {
     o.value = c.id; o.textContent = c.name;
     clSel.appendChild(o);
   });
+  _mChecklistSS = SearchableSelect.enhance(clSel);
 
   // Populate inspector dropdown in modal
   const inspSel = document.getElementById('m-inspector');
@@ -339,6 +342,7 @@ function openAddModal(deptId, dayOfWeek) {
   daySel.value = dayOfWeek != null ? dayOfWeek : 0;
   document.getElementById('m-type').value = '';
   document.getElementById('m-checklist').value = '';
+  if (_mChecklistSS) _mChecklistSS.sync();
   document.getElementById('m-inspector').value = '';
   document.getElementById('m-notes').value = '';
   openModal('add-modal');
@@ -381,7 +385,10 @@ async function deleteEntry(id) {
 }
 
 function openModal(id) { document.getElementById(id).classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  if (_mChecklistSS) _mChecklistSS.close();
+}
 
 async function init() {
   await initPage('weekly-schedule');
