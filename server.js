@@ -512,6 +512,12 @@ async function initDB() {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_capas_dept_id ON capas (dept_id)`);
 
+  // Performance indexes on hot foreign-key columns used by department-performance reports
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_inspection_items_inspection_id ON inspection_items (inspection_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_inspections_dept_id ON inspections (dept_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_findings_inspection_id ON findings (inspection_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_capas_finding_id ON capas (finding_id)`);
+
   // Seed department→checklist-type mappings (idempotent via ON CONFLICT DO NOTHING)
   const seedWeekly = require('./seed-weekly');
   await seedWeekly(pool);
