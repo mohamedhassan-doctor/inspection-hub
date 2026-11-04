@@ -456,6 +456,7 @@ async function initDB() {
   await pool.query(`UPDATE checklist_templates SET is_global=true, dept_id=null WHERE name='قائمة تدقيق مكافحة العدوى' AND is_global=false`);
   await pool.query(`ALTER TABLE inspections ADD COLUMN IF NOT EXISTS template_id INTEGER REFERENCES checklist_templates(id) ON DELETE SET NULL`);
   await pool.query(`ALTER TABLE checklist_templates ADD COLUMN IF NOT EXISTS inspection_type TEXT DEFAULT null`);
+  await pool.query(`ALTER TABLE checklist_templates ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT false`);
   await pool.query(`ALTER TABLE checklist_items ADD COLUMN IF NOT EXISTS section_name TEXT DEFAULT 'عام'`);
   await pool.query(`UPDATE checklist_items SET section_name='عام' WHERE section_name IS NULL`);
   await pool.query(`ALTER TABLE inspection_items ADD COLUMN IF NOT EXISTS section_name TEXT DEFAULT 'عام'`);
@@ -778,7 +779,7 @@ app.get('/api/departments/all-checklist-types', requireAuthAPI, requireChecklist
   try {
     const [types, counts] = await Promise.all([
       pool.query('SELECT department_id, checklist_type FROM department_checklist_types ORDER BY department_id, checklist_type'),
-      pool.query("SELECT dept_id, COUNT(*)::int AS cnt FROM checklist_templates WHERE (is_global IS NULL OR is_global=false) AND dept_id IS NOT NULL GROUP BY dept_id"),
+      pool.query("SELECT dept_id, COUNT(*)::int AS cnt FROM checklist_templates WHERE (is_global IS NULL OR is_global=false) AND dept_id IS NOT NULL AND is_archived=false GROUP BY dept_id"),
     ]);
     const typeMap = {};
     types.rows.forEach(r => {
@@ -1292,7 +1293,7 @@ app.post('/api/checklists/import', requireAuthAPI, requireRole('superadmin', 'qu
 app.get('/api/checklists', requireAuthAPI, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT t.*, d.name AS dept_name, COUNT(i.id)::int AS item_count FROM checklist_templates t LEFT JOIN departments d ON d.id=t.dept_id LEFT JOIN checklist_items i ON i.template_id=t.id GROUP BY t.id,d.name ORDER BY t.created_at DESC"
+      "SELECT t.*, d.name AS dept_name, COUNT(i.id)::int AS item_count FROM checklist_templates t LEFT JOIN departments d ON d.id=t.dept_id LEFT JOIN checklist_items i ON i.template_id=t.id WHERE t.is_archived=false GROUP BY t.id,d.name ORDER BY t.created_at DESC"
     );
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
@@ -1324,6 +1325,13 @@ app.put('/api/checklists/:id', requireAuthAPI, requireRole('superadmin', 'qualit
 
 app.delete('/api/checklists/:id', requireAuthAPI, requireRole('superadmin', 'quality_manager'), async (req, res) => {
   try {
+    const { rows: [{ count }] } = await pool.query(
+      "SELECT COUNT(*)::int AS count FROM inspections WHERE template_id=$1", [req.params.id]
+    );
+    if (count > 0) {
+      await pool.query("UPDATE checklist_templates SET is_archived=true WHERE id=$1", [req.params.id]);
+      return res.json({ ok: true, archived: true });
+    }
     await pool.query("DELETE FROM checklist_templates WHERE id=$1", [req.params.id]);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
@@ -1332,7 +1340,7 @@ app.delete('/api/checklists/:id', requireAuthAPI, requireRole('superadmin', 'qua
 app.get('/api/checklists/global', requireAuthAPI, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      "SELECT t.*, COUNT(i.id)::int AS item_count FROM checklist_templates t LEFT JOIN checklist_items i ON i.template_id=t.id WHERE t.is_global=true GROUP BY t.id ORDER BY t.created_at DESC"
+      "SELECT t.*, COUNT(i.id)::int AS item_count FROM checklist_templates t LEFT JOIN checklist_items i ON i.template_id=t.id WHERE t.is_global=true AND t.is_archived=false GROUP BY t.id ORDER BY t.created_at DESC"
     );
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
