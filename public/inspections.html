@@ -311,7 +311,7 @@ function renderTable(rows) {
       actions += `<button class="btn btn-secondary btn-sm btn-icon" onclick="openReport(${r.id})" title="التقرير"><i class="fas fa-file-alt"></i></button> `;
     }
     if (canWrite) {
-      actions += `<button class="btn btn-danger btn-sm btn-icon" onclick="deleteInspection(${r.id})" title="حذف"><i class="fas fa-trash"></i></button>`;
+      actions += `<button class="btn btn-danger btn-sm btn-icon" onclick="deleteInspection(${r.id},'${(r.title||'').replace(/'/g, "\\'")}')" title="حذف"><i class="fas fa-trash"></i></button>`;
     }
     return `<tr>
       <td><strong>${r.title}</strong></td>
@@ -502,8 +502,13 @@ async function saveInspection() {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
-async function deleteInspection(id) {
-  if (!confirmAction('هل تريد حذف هذه الجولة؟')) return;
+async function deleteInspection(id, title) {
+  const ok = await confirmDelete({
+    title: 'حذف الجولة',
+    itemName: title,
+    warning: 'سيتم حذف كل بيانات الجولة ونتائجها نهائياً، وإلغاء ربطها بجدول المرور. المخالفات المرتبطة بها ستبقى لكنها ستفقد ارتباطها بهذه الجولة.',
+  });
+  if (!ok) return;
   try {
     await api('DELETE', `/api/inspections/${id}`);
     showToast('تم الحذف', 'success');

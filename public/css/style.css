@@ -341,6 +341,7 @@ tbody tr:hover { background: #f8fafc; }
 
 .modal-lg { max-width: 780px; }
 .modal-xl { max-width: 1000px; }
+.modal-sm { max-width: 420px; }
 
 .modal-header {
   padding: 18px 22px;

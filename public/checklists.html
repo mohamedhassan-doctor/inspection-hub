@@ -311,7 +311,7 @@ function renderChecklistRow(t) {
       <td style="white-space:nowrap">
         <button class="btn btn-secondary btn-sm btn-icon" onclick="toggleItemsRow(${t.id})" title="عرض البنود والمحاور"><i class="fas fa-${isOpen?'compress':'expand'}"></i></button>
         <button class="btn btn-secondary btn-sm btn-icon" onclick="editTemplate(${t.id})" title="تعديل"><i class="fas fa-edit"></i></button>
-        <button class="btn btn-danger btn-sm btn-icon" onclick="deleteTemplate(${t.id})" title="حذف"><i class="fas fa-trash"></i></button>
+        <button class="btn btn-danger btn-sm btn-icon" onclick="deleteTemplate(${t.id},'${(t.name||'').replace(/'/g, "\\'")}')" title="حذف"><i class="fas fa-trash"></i></button>
       </td>
     </tr>`];
   if (isOpen) {
@@ -432,7 +432,7 @@ function renderTemplateItems(tmplId) {
           </div>
           <button class="btn btn-secondary btn-sm btn-icon" onclick="editItem(${tmplId},${item.id})" title="تعديل"><i class="fas fa-edit"></i></button>
           <button class="btn btn-${item.active?'warning':'success'} btn-sm btn-icon" onclick="toggleItem(${tmplId},${item.id},${!item.active})" title="${item.active?'تعطيل':'تفعيل'}"><i class="fas fa-${item.active?'eye-slash':'eye'}"></i></button>
-          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteItem(${tmplId},${item.id})" title="حذف"><i class="fas fa-trash"></i></button>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteItem(${tmplId},${item.id},'${(item.text||'').replace(/'/g, "\\'")}')" title="حذف"><i class="fas fa-trash"></i></button>
         </div>`;
       });
     }
@@ -478,7 +478,12 @@ async function deleteSection(tmplId, sectionName) {
     renderTemplateItems(tmplId);
     return;
   }
-  if (!confirmAction(`هل تريد حذف المحور "${sectionName}" وجميع بنوده (${secItems.length} بند)؟`)) return;
+  const ok = await confirmDelete({
+    title: 'حذف المحور',
+    itemName: sectionName,
+    warning: `سيتم حذف جميع بنود هذا المحور (${secItems.length} بند) نهائياً.`,
+  });
+  if (!ok) return;
   try {
     await api('DELETE', `/api/checklists/${tmplId}/sections?section_name=${encodeURIComponent(sectionName)}`);
     showToast('تم حذف المحور', 'success');
@@ -583,8 +588,13 @@ async function saveTemplate() {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
-async function deleteTemplate(id) {
-  if (!confirmAction('هل تريد حذف هذه القائمة وجميع بنودها؟')) return;
+async function deleteTemplate(id, name) {
+  const ok = await confirmDelete({
+    title: 'حذف قائمة التدقيق',
+    itemName: name,
+    warning: 'إذا كانت هذه القائمة مستخدمة في جولات سابقة سيتم أرشفتها فقط (بدون حذف بياناتها)، وإلا سيتم حذفها نهائياً مع جميع بنودها.',
+  });
+  if (!ok) return;
   try {
     await api('DELETE', `/api/checklists/${id}`);
     showToast('تم الحذف', 'success');
@@ -650,8 +660,9 @@ async function toggleItem(tmplId, itemId, newActive) {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
-async function deleteItem(tmplId, itemId) {
-  if (!confirmAction('هل تريد حذف هذا البند؟')) return;
+async function deleteItem(tmplId, itemId, text) {
+  const ok = await confirmDelete({ title: 'حذف البند', itemName: text });
+  if (!ok) return;
   try {
     await api('DELETE', `/api/checklists/${tmplId}/items/${itemId}`);
     showToast('تم الحذف', 'success');

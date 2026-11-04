@@ -222,7 +222,12 @@ async function saveUser() {
 }
 
 async function deleteUser(id, name) {
-  if (!confirmAction(`هل تريد حذف المستخدم "${name}"؟`)) return;
+  const ok = await confirmDelete({
+    title: 'حذف المستخدم',
+    itemName: name,
+    warning: 'الجولات والإجراءات التصحيحية المرتبطة بهذا المستخدم ستبقى، لكنها ستصبح بدون مسؤول.',
+  });
+  if (!ok) return;
   try {
     await api('DELETE', `/api/users/${id}`);
     showToast('تم الحذف', 'success');

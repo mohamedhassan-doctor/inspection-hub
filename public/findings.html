@@ -229,7 +229,7 @@ function renderTable(rows) {
         <i class="fas fa-tasks"></i> CAPA
       </button> `;
     }
-    actions += `<button class="btn btn-danger btn-sm btn-icon" onclick="deleteFinding(${r.id})" title="حذف"><i class="fas fa-trash"></i></button>`;
+    actions += `<button class="btn btn-danger btn-sm btn-icon" onclick="deleteFinding(${r.id},'${r.description.replace(/'/g,"\\'").slice(0,80)}',${!!r.capa_id})" title="حذف"><i class="fas fa-trash"></i></button>`;
     return `<tr>
       <td style="max-width:220px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.description}">${r.description}</div></td>
       <td><span class="${sl.cls}">${sl.text}</span></td>
@@ -278,8 +278,13 @@ async function saveFinding() {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
-async function deleteFinding(id) {
-  if (!confirmAction('هل تريد حذف هذه المخالفة؟')) return;
+async function deleteFinding(id, desc, hasCapa) {
+  const ok = await confirmDelete({
+    title: 'حذف المخالفة',
+    itemName: desc,
+    warning: hasCapa ? 'سيتم حذف الإجراء التصحيحي (CAPA) المرتبط بهذه المخالفة نهائياً أيضاً.' : null,
+  });
+  if (!ok) return;
   try {
     await api('DELETE', `/api/findings/${id}`);
     showToast('تم الحذف', 'success');

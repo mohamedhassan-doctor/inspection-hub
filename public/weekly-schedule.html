@@ -309,7 +309,7 @@ function renderTable() {
         return `<div class="sched-cell-filled" style="margin-bottom:6px">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:4px">
               <span class="sched-inspector">${entry.inspector_name || '—'}</span>
-              <button class="btn btn-danger btn-sm btn-icon" style="padding:1px 5px;font-size:10px;min-height:0" onclick="deleteEntry(${entry.id})" title="حذف">
+              <button class="btn btn-danger btn-sm btn-icon" style="padding:1px 5px;font-size:10px;min-height:0" onclick="deleteEntry(${entry.id},${!!entry.inspection_id})" title="حذف">
                 <i class="fas fa-times"></i>
               </button>
             </div>
@@ -375,8 +375,14 @@ async function saveSchedule() {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
-async function deleteEntry(id) {
-  if (!confirmAction('هل تريد حذف هذه الجولة من الجدول؟')) return;
+async function deleteEntry(id, hasInspection) {
+  const ok = await confirmDelete({
+    title: 'حذف من الجدول',
+    warning: hasInspection
+      ? 'إذا كانت الجولة المرتبطة بهذا الموعد لم تبدأ بعد، سيتم حذفها نهائياً مع هذا الموعد.'
+      : null,
+  });
+  if (!ok) return;
   try {
     await api('DELETE', `/api/weekly-schedules/${id}`);
     showToast('تم الحذف', 'success');

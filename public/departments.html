@@ -192,7 +192,12 @@ async function saveDept() {
 }
 
 async function deleteDept(id, name) {
-  if (!confirmAction(`هل تريد حذف قسم "${name}"؟`)) return;
+  const ok = await confirmDelete({
+    title: 'حذف القسم',
+    itemName: name,
+    warning: 'لا يمكن حذف القسم إذا كانت هناك جولات أو قوائم تدقيق أو مخالفات مرتبطة به.',
+  });
+  if (!ok) return;
   try {
     await api('DELETE', `/api/departments/${id}`);
     showToast('تم حذف القسم', 'success');

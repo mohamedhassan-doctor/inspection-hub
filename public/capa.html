@@ -199,7 +199,7 @@ function renderTable(rows) {
       <td style="white-space:nowrap">
         <button class="btn btn-secondary btn-sm btn-icon" onclick="editCapa(${r.id})" title="تعديل"><i class="fas fa-edit"></i></button>
         ${r.status!=='closed'?`<button class="btn btn-success btn-sm btn-icon" onclick="quickClose(${r.id})" title="إغلاق"><i class="fas fa-check"></i></button>`:''}
-        <button class="btn btn-danger btn-sm btn-icon" onclick="deleteCapa(${r.id})" title="حذف"><i class="fas fa-trash"></i></button>
+        <button class="btn btn-danger btn-sm btn-icon" onclick="deleteCapa(${r.id},'${r.action.replace(/'/g,"\\'").slice(0,80)}')" title="حذف"><i class="fas fa-trash"></i></button>
       </td>
     </tr>`;
   }).join('');
@@ -255,8 +255,9 @@ async function quickClose(id) {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
-async function deleteCapa(id) {
-  if (!confirmAction('هل تريد حذف هذا CAPA؟')) return;
+async function deleteCapa(id, action) {
+  const ok = await confirmDelete({ title: 'حذف الإجراء التصحيحي (CAPA)', itemName: action });
+  if (!ok) return;
   try {
     await api('DELETE', `/api/capa/${id}`);
     showToast('تم الحذف', 'success');

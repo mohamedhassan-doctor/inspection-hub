@@ -97,6 +97,38 @@ function confirmAction(msg) {
   return confirm(msg);
 }
 
+// ── Styled RTL delete-confirm dialog (Promise<boolean>; no HTML markup needed per page) ──
+function confirmDelete({ title, itemName, warning } = {}) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay open';
+    overlay.innerHTML = `
+      <div class="modal modal-sm" role="alertdialog" aria-modal="true">
+        <div class="modal-header">
+          <span class="modal-title"><i class="fas fa-trash" style="color:#ef4444;margin-left:8px"></i>${title || 'تأكيد الحذف'}</span>
+          <button type="button" class="modal-close" data-action="cancel">&times;</button>
+        </div>
+        <div class="modal-body">
+          ${itemName ? `<p style="margin:0 0 10px">"${itemName}"</p>` : ''}
+          ${warning ? `<p style="margin:0;color:#b91c1c;font-size:13px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px">${warning}</p>` : ''}
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-action="cancel">إلغاء</button>
+          <button type="button" class="btn btn-danger" data-action="confirm">حذف</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    const cleanup = result => { overlay.remove(); document.removeEventListener('keydown', onKey); resolve(result); };
+    const onKey = e => { if (e.key === 'Escape') cleanup(false); };
+    document.addEventListener('keydown', onKey);
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay || e.target.closest('[data-action="cancel"]')) cleanup(false);
+      else if (e.target.closest('[data-action="confirm"]')) cleanup(true);
+    });
+  });
+}
+
 // ── Format date ──
 function fmtDate(d) {
   if (!d) return '—';
