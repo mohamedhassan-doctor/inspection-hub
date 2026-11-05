@@ -311,6 +311,7 @@ function renderChecklistRow(t) {
       <td style="white-space:nowrap">
         <button class="btn btn-secondary btn-sm btn-icon" onclick="toggleItemsRow(${t.id})" title="عرض البنود والمحاور"><i class="fas fa-${isOpen?'compress':'expand'}"></i></button>
         <button class="btn btn-secondary btn-sm btn-icon" onclick="editTemplate(${t.id})" title="تعديل"><i class="fas fa-edit"></i></button>
+        <a class="btn btn-secondary btn-sm btn-icon" href="/api/checklists/${t.id}/export" download title="تصدير إلى Excel" aria-label="تصدير إلى Excel"><i class="fas fa-file-excel"></i></a>
         <button class="btn btn-danger btn-sm btn-icon" onclick="deleteTemplate(${t.id},'${(t.name||'').replace(/'/g, "\\'")}')" title="حذف"><i class="fas fa-trash"></i></button>
       </td>
     </tr>`];
