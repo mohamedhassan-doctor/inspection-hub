@@ -1420,6 +1420,94 @@ app.delete('/api/checklists/:id/sections', requireAuthAPI, requireRole('superadm
   } catch (e) { res.status(500).json({ error: 'خطأ' }); }
 });
 
+// Minimal copy of inspTypeLabels from public/js/shared.js (keep in sync — no shared module between client/server)
+const INSP_TYPE_LABELS_SERVER = {
+  environmental_safety: 'السلامة البيئية',
+  patient_safety: 'سلامة المريض',
+  infection_control: 'مكافحة العدوى',
+  fire_safety: 'سلامة الحريق',
+  medication: 'الأدوية',
+  medical_equipment: 'المعدات الطبية',
+  facilities_infrastructure: 'المرافق والبنية التحتية',
+  radiation_safety: 'السلامة الإشعاعية',
+  lab_safety: 'سلامة المعمل',
+  surgical_safety: 'السلامة الجراحية',
+  communication_safety: 'سلامة التواصل',
+  comprehensive_multidisciplinary: 'جولة شاملة متعددة التخصصات',
+};
+
+function sanitizeExcelFilename(name, fallback) {
+  const cleaned = String(name || '')
+    .replace(/[\\/?*:|"<>[\]\x00-\x1F]/g, '')
+    .trim()
+    .slice(0, 80);
+  return cleaned || fallback;
+}
+
+app.get('/api/checklists/:id/export', requireAuthAPI, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: 'معرف غير صالح' });
+
+    const { rows: [tmpl] } = await pool.query(
+      "SELECT t.*, d.name AS dept_name FROM checklist_templates t LEFT JOIN departments d ON d.id=t.dept_id WHERE t.id=$1",
+      [id]
+    );
+    if (!tmpl) return res.status(404).json({ error: 'القائمة غير موجودة' });
+
+    const { rows: items } = await pool.query(
+      "SELECT * FROM checklist_items WHERE template_id=$1 ORDER BY order_num, id",
+      [id]
+    );
+
+    const sectionOrder = [];
+    const sectionItems = {};
+    items.forEach(it => {
+      const sec = (it.section_name && it.section_name.trim()) || 'عام';
+      if (!sectionItems[sec]) { sectionItems[sec] = []; sectionOrder.push(sec); }
+      sectionItems[sec].push(it);
+    });
+    const genIdx = sectionOrder.indexOf('عام');
+    if (genIdx > 0) { sectionOrder.splice(genIdx, 1); sectionOrder.unshift('عام'); }
+
+    const aoa = [['المحور', 'البند', 'مرجع GAHAR', 'الحالة']];
+    sectionOrder.forEach(sec => {
+      sectionItems[sec].forEach(it => {
+        aoa.push([sec, it.text, it.gahar_ref || '', it.active ? 'مفعّل' : 'معطّل']);
+      });
+    });
+
+    const wb = XLSX.utils.book_new();
+    wb.Workbook = { Views: [{ RTL: true }] };
+
+    const ws1 = XLSX.utils.aoa_to_sheet(aoa);
+    ws1['!cols'] = [{ wch: 28 }, { wch: 80 }, { wch: 24 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, ws1, 'القائمة');
+
+    const activeCount = items.filter(it => it.active).length;
+    const deptLabel = tmpl.is_global ? 'عام' : (tmpl.dept_name || '—');
+    const typeLabel = tmpl.inspection_type ? (INSP_TYPE_LABELS_SERVER[tmpl.inspection_type] || tmpl.inspection_type) : '—';
+    const exportedAt = new Date().toLocaleString('ar-EG', { timeZone: 'Africa/Cairo' });
+
+    const ws2 = XLSX.utils.aoa_to_sheet([
+      ['اسم القائمة', tmpl.name],
+      ['القسم', deptLabel],
+      ['النوع', typeLabel],
+      ['عدد البنود', items.length],
+      ['عدد البنود المفعّلة', activeCount],
+      ['تاريخ التصدير', exportedAt],
+    ]);
+    ws2['!cols'] = [{ wch: 24 }, { wch: 40 }];
+    XLSX.utils.book_append_sheet(wb, ws2, 'معلومات');
+
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const sanitizedName = sanitizeExcelFilename(tmpl.name, `checklist-${id}`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="checklist-${id}.xlsx"; filename*=UTF-8''${encodeURIComponent(sanitizedName)}.xlsx`);
+    res.send(buf);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ في التصدير' }); }
+});
+
 // ══════════════════════════════════
 //  API — FINDINGS
 // ══════════════════════════════════
