@@ -91,26 +91,26 @@
 
     <div class="card" style="margin-top:20px">
       <div class="card-header">
-        <div class="card-title"><i class="fas fa-scale-balanced" style="color:#3f6b52"></i> التزام كل سياسة عبر الوقت</div>
+        <div class="card-title"><i class="fas fa-clipboard-check" style="color:#3f6b52"></i> تقييم كل قائمة تدقيق عبر الوقت</div>
       </div>
       <div class="card-body">
-        <p style="font-size:13px;color:#64748b;margin:0 0 14px">كل بند في قائمة التدقيق يمثل سياسة واحدة. تُحسب النسبة من النتائج المسجلة والقابلة للتطبيق في الجولات المكتملة.</p>
+        <p style="font-size:13px;color:#64748b;margin:0 0 14px">تُعامل كل قائمة تدقيق كسياسة واحدة. يُحسب تقييم الجولة من جميع البنود المسجلة والقابلة للتطبيق، ثم يُعرض متوسط تقييمات القائمة شهرياً.</p>
         <div class="quick-filters" style="margin-bottom:16px">
-          <label for="policy-dept-filter" style="font-size:13px;color:#64748b">القسم</label>
-          <select id="policy-dept-filter" class="form-control" style="min-width:190px" onchange="onPolicyDepartmentChange()">
+          <label for="checklist-dept-filter" style="font-size:13px;color:#64748b">القسم</label>
+          <select id="checklist-dept-filter" class="form-control" style="min-width:190px" onchange="onChecklistDepartmentChange()">
             <option value="">كل الأقسام</option>
           </select>
-          <label for="policy-item-filter" style="font-size:13px;color:#64748b">السياسة</label>
-          <select id="policy-item-filter" class="form-control" style="min-width:260px" onchange="renderPolicyAdherence()">
-            <option value="">اختر سياسة</option>
+          <label for="checklist-select" style="font-size:13px;color:#64748b">قائمة التدقيق</label>
+          <select id="checklist-select" class="form-control" style="min-width:260px" onchange="renderChecklistAdherence()">
+            <option value="">اختر قائمة تدقيق</option>
           </select>
         </div>
-        <div id="policy-adherence-empty" class="empty-state" style="display:none"><i class="fas fa-chart-line"></i><p>لا توجد نتائج مسجلة لهذه السياسة خلال الفترة المحددة</p></div>
-        <div id="policy-adherence-chart-wrap" class="chart-container" style="height:300px;display:none"><canvas id="policy-adherence-chart"></canvas></div>
+        <div id="checklist-adherence-empty" class="empty-state" style="display:none"><i class="fas fa-chart-line"></i><p>لا توجد جولات مكتملة لهذه القائمة خلال الفترة المحددة</p></div>
+        <div id="checklist-adherence-chart-wrap" class="chart-container" style="height:300px;display:none"><canvas id="checklist-adherence-chart"></canvas></div>
         <div class="table-wrapper" style="margin-top:16px">
           <table>
-            <thead><tr><th>الشهر</th><th>الالتزام</th><th>مطابق / مقيم</th><th>غير مطابق</th><th>يحتاج تحسين</th><th>بلا نتيجة</th><th>غير قابل للتطبيق</th></tr></thead>
-            <tbody id="policy-adherence-tbody"><tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:18px">اختر سياسة لعرض اتجاهها الشهري</td></tr></tbody>
+            <thead><tr><th>الشهر</th><th>تقييم القائمة</th><th>جولات مكتملة (مقيمة)</th><th>بنود مقيمة / إجمالي البنود</th><th>غير مطابق</th><th>يحتاج تحسين</th><th>بلا نتيجة</th><th>غير قابل للتطبيق</th></tr></thead>
+            <tbody id="checklist-adherence-tbody"><tr><td colspan="8" style="text-align:center;color:#94a3b8;padding:18px">اختر قائمة تدقيق لعرض اتجاهها الشهري</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -191,8 +191,8 @@ let summaryRows = [];
 let trendByDept = new Map(); // dept key -> trend array
 let trendReady = false;
 let dmCharts = {};
-let policyAdherenceRows = [];
-let policyAdherenceChart = null;
+let checklistAdherenceRows = [];
+let checklistAdherenceChart = null;
 
 // ── Per-checklist drill-down state (scoped to the currently open modal) ──
 let dmCurrentKey = null;
@@ -289,55 +289,55 @@ async function loadSummary() {
     const url = '/api/reports/department-performance' + (qs.toString() ? `?${qs}` : '');
     summaryRows = await api('GET', url);
     renderTable();
-    await loadPolicyAdherence();
+    await loadChecklistAdherence();
   } catch (e) {
     showToast(e.message, 'error');
   }
 }
 
-function policyGroupKey(row) {
-  return `${row.dept_id}::${row.policy_key}`;
+function checklistGroupKey(row) {
+  return `${row.dept_id}::${row.template_id}`;
 }
 
-async function loadPolicyAdherence() {
+async function loadChecklistAdherence() {
   const from = document.getElementById('f-from').value;
   const to = document.getElementById('f-to').value;
   const params = new URLSearchParams();
   if (from) params.set('from', from);
   if (to) params.set('to', to);
   const query = params.toString();
-  policyAdherenceRows = await api('GET', '/api/reports/policy-adherence' + (query ? `?${query}` : ''));
-  renderPolicySelectors();
-  renderPolicyAdherence();
+  checklistAdherenceRows = await api('GET', '/api/reports/checklist-adherence' + (query ? `?${query}` : ''));
+  renderChecklistSelectors();
+  renderChecklistAdherence();
 }
 
-function renderPolicySelectors() {
-  const deptSelect = document.getElementById('policy-dept-filter');
-  const policySelect = document.getElementById('policy-item-filter');
+function renderChecklistSelectors() {
+  const deptSelect = document.getElementById('checklist-dept-filter');
+  const checklistSelect = document.getElementById('checklist-select');
   const priorDept = deptSelect.value;
-  const priorPolicy = policySelect.value;
-  const departments = [...new Map(policyAdherenceRows.map(r => [String(r.dept_id), { id: r.dept_id, name: r.dept_name }])).values()]
+  const priorChecklist = checklistSelect.value;
+  const departments = [...new Map(checklistAdherenceRows.map(r => [String(r.dept_id), { id: r.dept_id, name: r.dept_name }])).values()]
     .sort((a, b) => a.name.localeCompare(b.name, 'ar'));
 
   deptSelect.replaceChildren(new Option('كل الأقسام', ''));
   departments.forEach(d => deptSelect.add(new Option(d.name, String(d.id))));
   deptSelect.value = departments.some(d => String(d.id) === priorDept) ? priorDept : '';
 
-  const eligible = policyAdherenceRows.filter(r => !deptSelect.value || String(r.dept_id) === deptSelect.value);
-  const policies = [...new Map(eligible.map(r => [policyGroupKey(r), r])).values()]
-    .sort((a, b) => `${a.dept_name} ${a.policy_ref || ''} ${a.policy_name}`.localeCompare(`${b.dept_name} ${b.policy_ref || ''} ${b.policy_name}`, 'ar'));
-  policySelect.replaceChildren(new Option('اختر سياسة', ''));
-  policies.forEach(r => {
-    const label = `${deptSelect.value ? '' : r.dept_name + ' — '}${r.policy_ref ? r.policy_ref + ' — ' : ''}${r.policy_name}`;
-    policySelect.add(new Option(label, encodeURIComponent(policyGroupKey(r))));
+  const eligible = checklistAdherenceRows.filter(r => !deptSelect.value || String(r.dept_id) === deptSelect.value);
+  const checklists = [...new Map(eligible.map(r => [checklistGroupKey(r), r])).values()]
+    .sort((a, b) => `${a.dept_name} ${a.checklist_name}`.localeCompare(`${b.dept_name} ${b.checklist_name}`, 'ar'));
+  checklistSelect.replaceChildren(new Option('اختر قائمة تدقيق', ''));
+  checklists.forEach(r => {
+    const label = `${deptSelect.value ? '' : r.dept_name + ' — '}${r.checklist_name}`;
+    checklistSelect.add(new Option(label, encodeURIComponent(checklistGroupKey(r))));
   });
-  policySelect.value = policies.some(r => encodeURIComponent(policyGroupKey(r)) === priorPolicy)
-    ? priorPolicy : (policies[0] ? encodeURIComponent(policyGroupKey(policies[0])) : '');
+  checklistSelect.value = checklists.some(r => encodeURIComponent(checklistGroupKey(r)) === priorChecklist)
+    ? priorChecklist : (checklists[0] ? encodeURIComponent(checklistGroupKey(checklists[0])) : '');
 }
 
-function onPolicyDepartmentChange() {
-  renderPolicySelectors();
-  renderPolicyAdherence();
+function onChecklistDepartmentChange() {
+  renderChecklistSelectors();
+  renderChecklistAdherence();
 }
 
 function monthsBetween(startMonth, endMonth) {
@@ -353,22 +353,22 @@ function monthsBetween(startMonth, endMonth) {
   return result;
 }
 
-function renderPolicyAdherence() {
-  const selected = document.getElementById('policy-item-filter').value;
+function renderChecklistAdherence() {
+  const selected = document.getElementById('checklist-select').value;
   const key = selected ? decodeURIComponent(selected) : '';
-  const observedRows = key ? policyAdherenceRows.filter(r => policyGroupKey(r) === key)
+  const observedRows = key ? checklistAdherenceRows.filter(r => checklistGroupKey(r) === key)
     .sort((a, b) => a.month.localeCompare(b.month)) : [];
-  const empty = document.getElementById('policy-adherence-empty');
-  const chartWrap = document.getElementById('policy-adherence-chart-wrap');
-  const tbody = document.getElementById('policy-adherence-tbody');
+  const empty = document.getElementById('checklist-adherence-empty');
+  const chartWrap = document.getElementById('checklist-adherence-chart-wrap');
+  const tbody = document.getElementById('checklist-adherence-tbody');
 
-  if (policyAdherenceChart) { policyAdherenceChart.destroy(); policyAdherenceChart = null; }
+  if (checklistAdherenceChart) { checklistAdherenceChart.destroy(); checklistAdherenceChart = null; }
   if (!observedRows.length) {
     chartWrap.style.display = 'none';
     empty.style.display = selected ? 'block' : 'none';
     tbody.replaceChildren();
     const tr = tbody.insertRow();
-    const td = tr.insertCell(); td.colSpan = 7; td.style.cssText = 'text-align:center;color:#94a3b8;padding:18px';
+    const td = tr.insertCell(); td.colSpan = 8; td.style.cssText = 'text-align:center;color:#94a3b8;padding:18px';
     td.textContent = selected ? 'لا توجد نتائج مسجلة لهذه السياسة خلال الفترة المحددة' : 'اختر سياسة لعرض اتجاهها الشهري';
     return;
   }
@@ -376,18 +376,18 @@ function renderPolicyAdherence() {
   const byMonth = new Map(observedRows.map(r => [r.month, r]));
   const fromMonth = document.getElementById('f-from').value.slice(0, 7) || observedRows[0].month;
   const toMonth = document.getElementById('f-to').value.slice(0, 7) || observedRows[observedRows.length - 1].month;
-  const emptyMonth = { ...observedRows[0], adherence_pct: null, assessed_count: 0, compliant_count: 0,
-    non_compliant_count: 0, needs_improvement_count: 0, unanswered_count: 0, not_applicable_count: 0 };
+  const emptyMonth = { ...observedRows[0], adherence_pct: null, completed_rounds: 0, assessed_rounds: 0, total_items: 0, assessed_items: 0,
+    compliant_items: 0, non_compliant_items: 0, needs_improvement_items: 0, unanswered_items: 0, not_applicable_items: 0 };
   const rows = monthsBetween(fromMonth, toMonth).map(month => byMonth.get(month) || { ...emptyMonth, month });
 
   empty.style.display = 'none';
   chartWrap.style.display = 'block';
-  policyAdherenceChart = new Chart(document.getElementById('policy-adherence-chart'), {
+  checklistAdherenceChart = new Chart(document.getElementById('checklist-adherence-chart'), {
     type: 'line',
     data: {
       labels: rows.map(r => r.month),
       datasets: [{
-        label: 'نسبة الالتزام %',
+        label: 'متوسط تقييم القائمة %',
         data: rows.map(r => r.adherence_pct == null ? null : Number(r.adherence_pct)),
         borderColor: '#3f6b52', backgroundColor: 'rgba(63,107,82,0.12)',
         pointBackgroundColor: '#3f6b52', pointRadius: 4, borderWidth: 2,
@@ -399,9 +399,7 @@ function renderPolicyAdherence() {
       plugins: { legend: { display: false }, tooltip: { callbacks: {
         afterLabel: context => {
           const r = rows[context.dataIndex];
-          return r.assessed_count + r.unanswered_count + r.not_applicable_count === 0
-            ? 'لا توجد جولة مكتملة لهذه السياسة هذا الشهر'
-            : `تم تقييمها ${r.assessed_count} مرة؛ بلا نتيجة ${r.unanswered_count}؛ غير منطبق ${r.not_applicable_count}`;
+          return `جولات مكتملة ${r.completed_rounds}؛ جولات لها نتيجة ${r.assessed_rounds}؛ بنود مقيمة ${r.assessed_items}؛ بلا نتيجة ${r.unanswered_items}؛ غير منطبق ${r.not_applicable_items}`;
         },
       } } },
       scales: { y: { min: 0, max: 100, ticks: { callback: value => `${value}%` } } },
@@ -414,11 +412,12 @@ function renderPolicyAdherence() {
     const values = [
       r.month,
       r.adherence_pct == null ? 'لا توجد نتائج مقيمة' : `${r.adherence_pct}%`,
-      r.assessed_count ? `${r.compliant_count} / ${r.assessed_count}` : 'لا توجد تقييمات',
-      r.non_compliant_count,
-      r.needs_improvement_count,
-      r.unanswered_count,
-      r.not_applicable_count,
+      `${r.completed_rounds} (${r.assessed_rounds} مقيمة)`,
+      `${r.assessed_items} / ${r.total_items}`,
+      r.non_compliant_items,
+      r.needs_improvement_items,
+      r.unanswered_items,
+      r.not_applicable_items,
     ];
     values.forEach(value => { tr.insertCell().textContent = value; });
   });

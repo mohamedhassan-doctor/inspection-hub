@@ -1666,10 +1666,9 @@ app.get('/api/reports/capa-ontime', requireAuthAPI, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
 });
 
-// Policy adherence by department and month. A checklist item is the policy measure;
-// checklist_item_id preserves its identity across inspection snapshots. Older
-// snapshots without that link fall back to their policy reference or item text.
-app.get('/api/reports/policy-adherence', requireAuthAPI, async (req, res) => {
+// Treat each checklist as one policy measure. Score every completed inspection
+// across all of its assessed items, then average those round scores by month.
+app.get('/api/reports/checklist-adherence', requireAuthAPI, async (req, res) => {
   try {
     const params = [];
     const filters = ["i.status='completed'", 'i.dept_id IS NOT NULL'];
@@ -1681,41 +1680,49 @@ app.get('/api/reports/policy-adherence', requireAuthAPI, async (req, res) => {
       filters.push(`i.dept_id=$${params.length}`);
     }
     const { rows } = await pool.query(`
-      WITH policy_results AS (
-        SELECT i.dept_id, d.name AS dept_name,
-          COALESCE(ii.checklist_item_id::text,
-            CASE WHEN COALESCE(ii.gahar_ref, ci.gahar_ref, '') <> ''
-              THEN 'ref:' || COALESCE(ii.gahar_ref, ci.gahar_ref)
-              ELSE 'text:' || COALESCE(ii.item_text, ci.text, '') END
-          ) AS policy_key,
-          COALESCE(ci.gahar_ref, ii.gahar_ref) AS policy_ref,
-          COALESCE(ci.text, ii.item_text) AS policy_name,
+      WITH round_scores AS (
+        SELECT i.id AS inspection_id, i.dept_id, d.name AS dept_name,
+          COALESCE(i.template_id, MAX(ci.template_id)) AS template_id,
           TO_CHAR(DATE_TRUNC('month', i.scheduled_date), 'YYYY-MM') AS month,
-          ii.result
-        FROM inspection_items ii
-        JOIN inspections i ON i.id=ii.inspection_id
-        LEFT JOIN departments d ON d.id=i.dept_id
+          COUNT(ii.id)::int AS total_items,
+          COUNT(ii.id) FILTER (WHERE ii.result IN ('compliant','non_compliant','needs_improvement'))::int AS assessed_items,
+          COUNT(ii.id) FILTER (WHERE ii.result='compliant')::int AS compliant_items,
+          COUNT(ii.id) FILTER (WHERE ii.result='non_compliant')::int AS non_compliant_items,
+          COUNT(ii.id) FILTER (WHERE ii.result='needs_improvement')::int AS needs_improvement_items,
+          COUNT(ii.id) FILTER (WHERE ii.result IS NULL)::int AS unanswered_items,
+          COUNT(ii.id) FILTER (WHERE ii.result='not_applicable')::int AS not_applicable_items,
+          CASE WHEN COUNT(ii.id) FILTER (WHERE ii.result IN ('compliant','non_compliant','needs_improvement')) > 0
+            THEN COUNT(ii.id) FILTER (WHERE ii.result='compliant') * 100.0 /
+              COUNT(ii.id) FILTER (WHERE ii.result IN ('compliant','non_compliant','needs_improvement'))
+            ELSE NULL END AS round_adherence_pct
+        FROM inspections i
+        LEFT JOIN inspection_items ii ON ii.inspection_id=i.id
         LEFT JOIN checklist_items ci ON ci.id=ii.checklist_item_id
+        LEFT JOIN departments d ON d.id=i.dept_id
         WHERE ${filters.join(' AND ')} ${dateFilter}
+        GROUP BY i.id, i.dept_id, d.name, i.template_id, i.scheduled_date
+      ), resolved_rounds AS (
+        SELECT rs.*, ct.name AS checklist_name
+        FROM round_scores rs
+        JOIN checklist_templates ct ON ct.id=rs.template_id
       )
-      SELECT dept_id, dept_name, policy_key, policy_ref, policy_name, month,
-        COUNT(*) FILTER (WHERE result IN ('compliant','non_compliant','needs_improvement'))::int AS assessed_count,
-        COUNT(*) FILTER (WHERE result='compliant')::int AS compliant_count,
-        COUNT(*) FILTER (WHERE result='non_compliant')::int AS non_compliant_count,
-        COUNT(*) FILTER (WHERE result='needs_improvement')::int AS needs_improvement_count,
-        COUNT(*) FILTER (WHERE result IS NULL)::int AS unanswered_count,
-        COUNT(*) FILTER (WHERE result='not_applicable')::int AS not_applicable_count,
-        CASE WHEN COUNT(*) FILTER (WHERE result IN ('compliant','non_compliant','needs_improvement')) > 0
-          THEN ROUND(COUNT(*) FILTER (WHERE result='compliant') * 100.0 /
-            COUNT(*) FILTER (WHERE result IN ('compliant','non_compliant','needs_improvement')), 1)
-          ELSE NULL END AS adherence_pct
-      FROM policy_results
-      WHERE policy_key IS NOT NULL AND policy_key <> 'text:'
-      GROUP BY dept_id, dept_name, policy_key, policy_ref, policy_name, month
-      ORDER BY dept_name, policy_ref NULLS LAST, policy_name, month
+      SELECT dept_id, dept_name, template_id, checklist_name, month,
+        COUNT(*)::int AS completed_rounds,
+        COUNT(round_adherence_pct)::int AS assessed_rounds,
+        ROUND(AVG(round_adherence_pct),1) AS adherence_pct,
+        SUM(total_items)::int AS total_items,
+        SUM(assessed_items)::int AS assessed_items,
+        SUM(compliant_items)::int AS compliant_items,
+        SUM(non_compliant_items)::int AS non_compliant_items,
+        SUM(needs_improvement_items)::int AS needs_improvement_items,
+        SUM(unanswered_items)::int AS unanswered_items,
+        SUM(not_applicable_items)::int AS not_applicable_items
+      FROM resolved_rounds
+      GROUP BY dept_id, dept_name, template_id, checklist_name, month
+      ORDER BY dept_name, checklist_name, month
     `, params);
     res.json(rows);
-  } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ في تحميل التزام السياسات' }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ في تحميل تقييم قوائم التدقيق' }); }
 });
 
 app.get('/api/reports/department-performance', requireAuthAPI, async (req, res) => {
