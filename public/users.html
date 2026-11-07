@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="/css/style.css">
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#0e7490">
+  <meta name="theme-color" content="#166534">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -157,7 +157,7 @@ function renderTable(rows) {
       quality_staff: 'badge-info',
     };
     const isCurrent = u.id === myId;
-    return `<tr ${isCurrent ? 'style="background:#ecfeff"' : ''}>
+    return `<tr ${isCurrent ? 'style="background:#fef3c7"' : ''}>
       <td class="col-hide-mobile">${u.id}</td>
       <td><strong>${u.name}</strong> ${isCurrent ? '<span class="badge badge-teal" style="font-size:11px">أنت</span>' : ''}</td>
       <td class="col-hide-mobile" dir="ltr" style="text-align:right;font-family:monospace">${u.username}</td>

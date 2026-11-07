@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="/css/style.css">
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#0e7490">
+  <meta name="theme-color" content="#166534">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -585,8 +585,8 @@ function renderExecItems(items) {
 
     return `<div style="margin-bottom:16px">
       <div class="exec-section-hdr" style="background:#f1f5f9;padding:8px 16px;display:flex;align-items:center;gap:8px;border-radius:8px 8px 0 0;border:1px solid #e2e8f0;border-bottom:none">
-        <i class="fas fa-layer-group" style="color:#0e7490"></i>
-        <span style="font-weight:700;color:#0e7490;flex:1">${secName}</span>
+        <i class="fas fa-layer-group" style="color:#166534"></i>
+        <span style="font-weight:700;color:#166534;flex:1">${secName}</span>
         <span data-sec-stat="${secName}" style="font-size:13px;font-weight:600;color:${pctColor}">${pctText}</span>
       </div>
       <div style="border:1px solid #e2e8f0;border-radius:0 0 8px 8px;overflow:hidden">${itemsHtml}</div>
@@ -727,8 +727,8 @@ async function openReport(id) {
       }).join('');
       return `<div style="margin-bottom:16px">
         <div style="background:${isLow?'#fef2f2':'#f1f5f9'};padding:8px 12px;border-radius:8px 8px 0 0;border:1px solid ${isLow?'#fca5a5':'#e2e8f0'};display:flex;align-items:center;gap:8px">
-          <i class="fas fa-layer-group" style="color:${isLow?'#dc2626':'#0e7490'}"></i>
-          <span style="font-weight:700;color:${isLow?'#dc2626':'#0e7490'};flex:1">${secName}</span>
+          <i class="fas fa-layer-group" style="color:${isLow?'#dc2626':'#166534'}"></i>
+          <span style="font-weight:700;color:${isLow?'#dc2626':'#166534'};flex:1">${secName}</span>
           <span style="font-size:13px;font-weight:600;color:${spColor}">${spTxt}</span>
           ${isLow?'<span style="font-size:11px;color:#dc2626">⚠ دون 80%</span>':''}
         </div>
@@ -744,10 +744,10 @@ async function openReport(id) {
     }).join('') : '<tr><td colspan="2" style="text-align:center;color:#94a3b8">لا توجد مخالفات</td></tr>';
 
     document.getElementById('report-content').innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:center;gap:18px;padding-bottom:16px;margin-bottom:16px;border-bottom:2px solid #0e7490">
+      <div style="display:flex;align-items:center;justify-content:center;gap:18px;padding-bottom:16px;margin-bottom:16px;border-bottom:2px solid #166534">
         <img src="${logoSrc}" alt="لوجو مستشفى المقطم التخصصي" style="height:140px;width:auto;flex-shrink:0">
         <div style="text-align:center">
-          <div style="font-family:'Tajawal',sans-serif;font-weight:700;font-size:22px;color:#0e7490">مستشفى المقطم التخصصي</div>
+          <div style="font-family:'Tajawal',sans-serif;font-weight:700;font-size:22px;color:#166534">مستشفى المقطم التخصصي</div>
           <div style="font-size:14px;color:#64748b;margin-top:2px">Mokattam Specialized Hospital</div>
           <div style="font-family:'Tajawal',sans-serif;font-weight:600;font-size:16px;color:#1e293b;margin-top:8px">تقرير مرور إدارة الجودة</div>
         </div>
@@ -827,7 +827,7 @@ function printReport() {
     .badge-warning { background: #fef9c3 !important; color: #a16207 !important; }
     .badge-info { background: #dbeafe !important; color: #1d4ed8 !important; }
     .badge-secondary { background: #f1f5f9 !important; color: #475569 !important; }
-    .badge-teal { background: #ecfeff !important; color: #0e7490 !important; }
+    .badge-teal { background: #fef3c7 !important; color: #166534 !important; }
     .progress-bar-wrap {
       background: #e2e8f0; border-radius: 99px; height: 8px; min-width: 80px; overflow: hidden;
       -webkit-print-color-adjust: exact; print-color-adjust: exact;

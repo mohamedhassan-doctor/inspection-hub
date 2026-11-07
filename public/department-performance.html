@@ -10,7 +10,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#0e7490">
+  <meta name="theme-color" content="#166534">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -18,7 +18,7 @@
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <style>
     .quick-filters { display:flex; gap:8px; flex-wrap:wrap; align-items:center }
-    .quick-filters .btn.active { background:#0e7490; color:#fff; border-color:#0e7490 }
+    .quick-filters .btn.active { background:#166534; color:#fff; border-color:#166534 }
     .dept-row { cursor:pointer }
     .dept-row:hover { background:#f0f9ff !important }
     .unassigned-row { background:#f8fafc }
@@ -68,7 +68,7 @@
 
     <div class="card">
       <div class="card-header">
-        <div class="card-title"><i class="fas fa-table" style="color:#0e7490"></i> مقارنة الأقسام</div>
+        <div class="card-title"><i class="fas fa-table" style="color:#166534"></i> مقارنة الأقسام</div>
       </div>
       <div class="card-body" style="padding:0">
         <div class="table-wrapper">
@@ -359,7 +359,7 @@ async function renderForCurrentSelection() {
       const months = trend ? trend.trend : [];
       trendLoading.style.display = 'none';
       trendCharts.style.display = 'block';
-      renderTrendChart('dm-chart-compliance', 'compliance_pct', months, 'الالتزام %', '#0e7490');
+      renderTrendChart('dm-chart-compliance', 'compliance_pct', months, 'الالتزام %', '#166534');
       renderTrendChart('dm-chart-recurring', 'recurring_pct', months, 'البنود المتكررة %', '#d97706');
       renderTrendChart('dm-chart-ontime', 'capa_ontime_pct', months, 'إغلاق CAPA في الوقت %', '#16a34a');
     };
@@ -396,7 +396,7 @@ async function renderForCurrentSelection() {
     destroyDmCharts();
     trendLoading.style.display = 'none';
     trendCharts.style.display = 'block';
-    renderTrendChart('dm-chart-compliance', 'compliance_pct', months, 'الالتزام %', '#0e7490');
+    renderTrendChart('dm-chart-compliance', 'compliance_pct', months, 'الالتزام %', '#166534');
     renderTrendChart('dm-chart-recurring', 'recurring_pct', months, 'البنود المتكررة %', '#d97706');
     renderTrendChart('dm-chart-ontime', 'capa_ontime_pct', months, 'إغلاق CAPA في الوقت %', '#16a34a');
     return;
@@ -433,7 +433,7 @@ async function renderForCurrentSelection() {
     recurring_pct: r.recurring_pct,
     capa_ontime_pct: r.capa_ontime_pct,
   }));
-  renderTrendChart('dm-chart-compliance', 'compliance_pct', roundPoints, 'الالتزام %', '#0e7490');
+  renderTrendChart('dm-chart-compliance', 'compliance_pct', roundPoints, 'الالتزام %', '#166534');
   renderTrendChart('dm-chart-recurring', 'recurring_pct', roundPoints, 'البنود المتكررة %', '#d97706');
   renderTrendChart('dm-chart-ontime', 'capa_ontime_pct', roundPoints, 'إغلاق CAPA في الوقت %', '#16a34a');
 }
