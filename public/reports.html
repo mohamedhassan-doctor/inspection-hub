@@ -10,7 +10,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#166534">
+  <meta name="theme-color" content="#3f6b52">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -46,7 +46,7 @@
     <div class="cards-row cols-2">
       <div class="card">
         <div class="card-header">
-          <div class="card-title"><i class="fas fa-chart-bar" style="color:#166534"></i> نسبة المطابقة بالأقسام</div>
+          <div class="card-title"><i class="fas fa-chart-bar" style="color:#3f6b52"></i> نسبة المطابقة بالأقسام</div>
         </div>
         <div class="card-body">
           <div class="chart-container"><canvas id="compliance-chart"></canvas></div>
@@ -54,7 +54,7 @@
       </div>
       <div class="card">
         <div class="card-header">
-          <div class="card-title"><i class="fas fa-chart-pie" style="color:#166534"></i> معدل إغلاق CAPA</div>
+          <div class="card-title"><i class="fas fa-chart-pie" style="color:#3f6b52"></i> معدل إغلاق CAPA</div>
         </div>
         <div class="card-body">
           <div class="chart-container"><canvas id="capa-chart"></canvas></div>
@@ -67,7 +67,7 @@
     <div class="cards-row cols-2">
       <div class="card">
         <div class="card-header">
-          <div class="card-title"><i class="fas fa-chart-area" style="color:#166534"></i> Pareto — أعلى 10 مخالفات</div>
+          <div class="card-title"><i class="fas fa-chart-area" style="color:#3f6b52"></i> Pareto — أعلى 10 مخالفات</div>
         </div>
         <div class="card-body">
           <div class="chart-container"><canvas id="pareto-chart"></canvas></div>
@@ -75,7 +75,7 @@
       </div>
       <div class="card">
         <div class="card-header">
-          <div class="card-title"><i class="fas fa-chart-line" style="color:#166534"></i> مقارنة الأقسام شهر بشهر</div>
+          <div class="card-title"><i class="fas fa-chart-line" style="color:#3f6b52"></i> مقارنة الأقسام شهر بشهر</div>
         </div>
         <div class="card-body">
           <div class="chart-container"><canvas id="monthly-chart"></canvas></div>
@@ -86,7 +86,7 @@
     <!-- Compliance Table -->
     <div class="card">
       <div class="card-header">
-        <div class="card-title"><i class="fas fa-table" style="color:#166534"></i> جدول نسب المطابقة</div>
+        <div class="card-title"><i class="fas fa-table" style="color:#3f6b52"></i> جدول نسب المطابقة</div>
       </div>
       <div class="card-body" style="padding:0">
         <div class="table-wrapper">
@@ -167,7 +167,7 @@ async function loadCapaRate() {
     const d = await api('GET', '/api/reports/capa-rate');
     const closureRate = d.total > 0 ? Math.round((d.closed / d.total) * 100) : 0;
     document.getElementById('capa-rate-summary').innerHTML =
-      `إجمالي: <strong>${d.total}</strong> | مغلقة: <strong style="color:#16a34a">${d.closed}</strong> | متأخرة: <strong style="color:#ef4444">${d.overdue}</strong> | معدل الإغلاق: <strong style="color:#166534">${closureRate}%</strong>`;
+      `إجمالي: <strong>${d.total}</strong> | مغلقة: <strong style="color:#16a34a">${d.closed}</strong> | متأخرة: <strong style="color:#ef4444">${d.overdue}</strong> | معدل الإغلاق: <strong style="color:#3f6b52">${closureRate}%</strong>`;
 
     destroyChart('capa');
     charts['capa'] = new Chart(document.getElementById('capa-chart'), {
@@ -236,7 +236,7 @@ async function loadMonthly() {
     // Pivot data by dept
     const months = [...new Set(rows.map(r => r.month))].sort();
     const depts = [...new Set(rows.map(r => r.dept_name))];
-    const palette = ['#166534','#2563eb','#16a34a','#d97706','#dc2626','#7c3aed','#db2777','#059669','#ea580c','#6366f1'];
+    const palette = ['#3f6b52','#2563eb','#16a34a','#d97706','#dc2626','#7c3aed','#db2777','#059669','#ea580c','#6366f1'];
 
     const datasets = depts.map((dept, i) => ({
       label: dept,
