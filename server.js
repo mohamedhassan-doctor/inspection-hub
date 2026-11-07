@@ -1666,6 +1666,58 @@ app.get('/api/reports/capa-ontime', requireAuthAPI, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ' }); }
 });
 
+// Policy adherence by department and month. A checklist item is the policy measure;
+// checklist_item_id preserves its identity across inspection snapshots. Older
+// snapshots without that link fall back to their policy reference or item text.
+app.get('/api/reports/policy-adherence', requireAuthAPI, async (req, res) => {
+  try {
+    const params = [];
+    const filters = ["i.status='completed'", 'i.dept_id IS NOT NULL'];
+    const dateFilter = dateRangeFilter('i.scheduled_date', req.query.from, req.query.to, params);
+    if (req.query.dept_id) {
+      const deptId = parseInt(req.query.dept_id, 10);
+      if (!Number.isInteger(deptId) || deptId <= 0) return res.status(400).json({ error: 'Invalid department id' });
+      params.push(deptId);
+      filters.push(`i.dept_id=$${params.length}`);
+    }
+    const { rows } = await pool.query(`
+      WITH policy_results AS (
+        SELECT i.dept_id, d.name AS dept_name,
+          COALESCE(ii.checklist_item_id::text,
+            CASE WHEN COALESCE(ii.gahar_ref, ci.gahar_ref, '') <> ''
+              THEN 'ref:' || COALESCE(ii.gahar_ref, ci.gahar_ref)
+              ELSE 'text:' || COALESCE(ii.item_text, ci.text, '') END
+          ) AS policy_key,
+          COALESCE(ci.gahar_ref, ii.gahar_ref) AS policy_ref,
+          COALESCE(ci.text, ii.item_text) AS policy_name,
+          TO_CHAR(DATE_TRUNC('month', i.scheduled_date), 'YYYY-MM') AS month,
+          ii.result
+        FROM inspection_items ii
+        JOIN inspections i ON i.id=ii.inspection_id
+        LEFT JOIN departments d ON d.id=i.dept_id
+        LEFT JOIN checklist_items ci ON ci.id=ii.checklist_item_id
+        WHERE ${filters.join(' AND ')} ${dateFilter}
+      )
+      SELECT dept_id, dept_name, policy_key, policy_ref, policy_name, month,
+        COUNT(*) FILTER (WHERE result IN ('compliant','non_compliant','needs_improvement'))::int AS assessed_count,
+        COUNT(*) FILTER (WHERE result='compliant')::int AS compliant_count,
+        COUNT(*) FILTER (WHERE result='non_compliant')::int AS non_compliant_count,
+        COUNT(*) FILTER (WHERE result='needs_improvement')::int AS needs_improvement_count,
+        COUNT(*) FILTER (WHERE result IS NULL)::int AS unanswered_count,
+        COUNT(*) FILTER (WHERE result='not_applicable')::int AS not_applicable_count,
+        CASE WHEN COUNT(*) FILTER (WHERE result IN ('compliant','non_compliant','needs_improvement')) > 0
+          THEN ROUND(COUNT(*) FILTER (WHERE result='compliant') * 100.0 /
+            COUNT(*) FILTER (WHERE result IN ('compliant','non_compliant','needs_improvement')), 1)
+          ELSE NULL END AS adherence_pct
+      FROM policy_results
+      WHERE policy_key IS NOT NULL AND policy_key <> 'text:'
+      GROUP BY dept_id, dept_name, policy_key, policy_ref, policy_name, month
+      ORDER BY dept_name, policy_ref NULLS LAST, policy_name, month
+    `, params);
+    res.json(rows);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'خطأ في تحميل التزام السياسات' }); }
+});
+
 app.get('/api/reports/department-performance', requireAuthAPI, async (req, res) => {
   try {
     const { from, to } = req.query;
